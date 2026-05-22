@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "2663332185",
+    "project_id": "tabemina",
+    "storage_bucket": "tabemina.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:2663332185:android:e22ac89b186be419b37448",
+        "android_client_info": {
+          "package_name": "com.tabemina.tabemina"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCkcno95cbnLuLtQsC21iZxT15ynDqRLzs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
