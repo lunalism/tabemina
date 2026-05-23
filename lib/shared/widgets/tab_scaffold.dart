@@ -56,7 +56,7 @@ class TabScaffold extends StatelessWidget {
             label: 'Home',
           ),
           const BottomNavigationBarItem(
-            icon: Icon(Icons.search_outlined),
+            icon: Icon(Icons.search),
             activeIcon: Icon(Icons.search),
             label: 'Search',
           ),
@@ -67,7 +67,7 @@ class TabScaffold extends StatelessWidget {
             label: 'Review',
           ),
           const BottomNavigationBarItem(
-            icon: Icon(Icons.bookmark_border),
+            icon: Icon(Icons.bookmark_outline),
             activeIcon: Icon(Icons.bookmark),
             label: 'Bookmarks',
           ),
