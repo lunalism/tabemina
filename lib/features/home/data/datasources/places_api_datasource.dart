@@ -21,13 +21,13 @@ class PlacesApiDatasource {
       'places.id,places.displayName,places.rating,places.userRatingCount,'
       'places.priceLevel,places.photos,places.location';
 
-  /// Food-and-drink Place types we accept in nearby search.
+  /// Food-and-drink Place primary types we accept in nearby search.
   ///
-  /// Without an explicit `includedTypes`, Nearby Search returns mixed
-  /// commercial venues (department stores, malls) because their primary type
-  /// can spill into "restaurant" via tenant listings. Restricting up front is
-  /// cheaper than filtering client-side and keeps the result count meaningful.
-  static const List<String> _foodTypes = [
+  /// Sent as `includedPrimaryTypes` (not `includedTypes`) so a venue only
+  /// matches when its *primary* business type is on the list. The looser
+  /// `includedTypes` filter matched anything that *contained* a restaurant,
+  /// which leaked hotels, malls, and Pokemon Centers into the carousel.
+  static const List<String> _foodPrimaryTypes = [
     'restaurant',
     'japanese_restaurant',
     'ramen_restaurant',
@@ -43,22 +43,15 @@ class PlacesApiDatasource {
     'vietnamese_restaurant',
     'american_restaurant',
     'mediterranean_restaurant',
-    'middle_eastern_restaurant',
     'greek_restaurant',
     'turkish_restaurant',
-    'brazilian_restaurant',
-    'spanish_restaurant',
-    'indonesian_restaurant',
-    'lebanese_restaurant',
     'barbecue_restaurant',
     'steak_house',
     'pizza_restaurant',
     'hamburger_restaurant',
-    'sandwich_shop',
     'vegan_restaurant',
     'vegetarian_restaurant',
     'brunch_restaurant',
-    'buffet_restaurant',
     'cafe',
     'coffee_shop',
     'bakery',
@@ -66,7 +59,6 @@ class PlacesApiDatasource {
     'ice_cream_shop',
     'dessert_shop',
     'meal_takeaway',
-    'meal_delivery',
   ];
 
   /// Nearby restaurants within [radiusMeters] of (lat, lng), capped by
@@ -86,7 +78,7 @@ class PlacesApiDatasource {
         'X-Goog-FieldMask': _fieldMask,
       },
       body: jsonEncode({
-        'includedTypes': _foodTypes,
+        'includedPrimaryTypes': _foodPrimaryTypes,
         'maxResultCount': maxResults,
         'rankPreference': 'POPULARITY',
         'locationRestriction': {
