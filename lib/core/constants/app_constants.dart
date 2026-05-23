@@ -1,22 +1,23 @@
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
-/// App-wide constants: spacing, sizing, radii, and durations.
+/// App-wide constants: spacing, radii, sizing, durations, and map defaults.
 class AppConstants {
   AppConstants._();
 
   // Spacing scale (4pt grid)
   static const double spaceXs = 4;
   static const double spaceSm = 8;
-  static const double spaceMd = 16;
-  static const double spaceLg = 24;
-  static const double spaceXl = 32;
-  static const double spaceXxl = 48;
+  static const double spaceMd = 12;
+  static const double spaceLg = 16;
+  static const double spaceXl = 20;
+  static const double space2xl = 24;
 
   // Border radii
-  static const double radiusSm = 8;
-  static const double radiusMd = 12;
+  static const double radiusSm = 6;
+  static const double radiusMd = 10;
   static const double radiusLg = 16;
-  static const double radiusXl = 24;
+  static const double radiusXl = 22;
+  static const double radiusFull = 9999;
 
   // Sizing
   static const double iconSm = 20;

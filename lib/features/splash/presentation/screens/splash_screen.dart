@@ -10,7 +10,7 @@ import '../../../../core/router/app_router.dart';
 
 /// In-app animated splash.
 ///
-/// Sits on top of the native (OS-level) splash so the brand-blue background is
+/// Sits on top of the native (OS-level) splash so the brand-Coral background is
 /// seamless across the hand-off. Fades the wordmark in, runs any startup work,
 /// then routes to home. Identical in light and dark mode by design.
 class SplashScreen extends ConsumerStatefulWidget {
@@ -86,13 +86,13 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
 
   @override
   Widget build(BuildContext context) {
-    // Force light status bar icons over the blue background, in both themes.
+    // Force light status bar icons over the Coral background, in both themes.
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: SystemUiOverlayStyle.light.copyWith(
         statusBarColor: Colors.transparent,
       ),
       child: Scaffold(
-        backgroundColor: AppColors.primary,
+        backgroundColor: AppColors.brandCoralLight,
         body: Center(
           child: FadeTransition(
             opacity: _fade,

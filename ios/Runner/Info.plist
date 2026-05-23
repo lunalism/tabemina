@@ -6,6 +6,10 @@
 		<true/>
 		<key>CFBundleDevelopmentRegion</key>
 		<string>$(DEVELOPMENT_LANGUAGE)</string>
+		<key>GOOGLE_MAPS_API_KEY</key>
+		<string>$(GOOGLE_MAPS_API_KEY)</string>
+		<key>NSLocationWhenInUseUsageDescription</key>
+		<string>Tabemina uses your location to center the map on where you are and to find restaurants nearby.</string>
 		<key>CFBundleDisplayName</key>
 		<string>Tabemina</string>
 		<key>CFBundleExecutable</key>

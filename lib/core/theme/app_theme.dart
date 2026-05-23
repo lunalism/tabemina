@@ -4,89 +4,61 @@ import '../constants/app_colors.dart';
 import '../constants/app_constants.dart';
 import '../constants/app_typography.dart';
 
-/// Material 3 themes for Tabemina (light + dark).
-///
-/// Colors come from the CVD-safe palette in [AppColors] and are wired into
-/// explicit [ColorScheme]s rather than [ColorScheme.fromSeed] so the chosen
-/// tokens are preserved exactly.
+/// Material 3 themes for Tabemina — Coral warm-tone palette (light + dark).
 class AppTheme {
   AppTheme._();
 
-  static ThemeData get light {
-    const colorScheme = ColorScheme(
-      brightness: Brightness.light,
-      primary: AppColors.primary,
+  static ThemeData get light => _build(AppColors.light, Brightness.light);
+
+  static ThemeData get dark => _build(AppColors.dark, Brightness.dark);
+
+  static ThemeData _build(AppColors c, Brightness brightness) {
+    final colorScheme = ColorScheme(
+      brightness: brightness,
+      primary: c.primary,
       onPrimary: AppColors.onPrimary,
-      secondary: AppColors.secondary,
-      onSecondary: AppColors.onSecondary,
-      error: AppColors.error,
-      onError: AppColors.onError,
-      surface: AppColors.surfaceLight,
-      onSurface: AppColors.textPrimaryLight,
+      secondary: c.secondary,
+      onSecondary: c.textPrimary,
+      error: c.errorText,
+      onError: AppColors.onPrimary,
+      surface: c.bgCard,
+      onSurface: c.textPrimary,
     );
-
-    return _base(colorScheme).copyWith(
-      scaffoldBackgroundColor: AppColors.backgroundLight,
-    );
-  }
-
-  static ThemeData get dark {
-    const colorScheme = ColorScheme(
-      brightness: Brightness.dark,
-      primary: AppColors.primary,
-      onPrimary: AppColors.onPrimary,
-      secondary: AppColors.secondary,
-      onSecondary: AppColors.onSecondary,
-      error: AppColors.error,
-      onError: AppColors.onError,
-      surface: AppColors.surfaceDark,
-      onSurface: AppColors.textPrimaryDark,
-    );
-
-    return _base(colorScheme).copyWith(
-      scaffoldBackgroundColor: AppColors.backgroundDark,
-    );
-  }
-
-  static ThemeData _base(ColorScheme colorScheme) {
-    final isDark = colorScheme.brightness == Brightness.dark;
 
     return ThemeData(
       useMaterial3: true,
+      brightness: brightness,
       colorScheme: colorScheme,
+      scaffoldBackgroundColor: c.bgPage,
+      dividerColor: c.borderPrimary,
       fontFamily: AppTypography.fontFamily,
       textTheme: AppTypography.textTheme.apply(
-        bodyColor: isDark
-            ? AppColors.textPrimaryDark
-            : AppColors.textPrimaryLight,
-        displayColor: isDark
-            ? AppColors.textPrimaryDark
-            : AppColors.textPrimaryLight,
+        bodyColor: c.textPrimary,
+        displayColor: c.textPrimary,
       ),
       appBarTheme: AppBarTheme(
-        backgroundColor: isDark
-            ? AppColors.backgroundDark
-            : AppColors.backgroundLight,
-        foregroundColor: isDark
-            ? AppColors.textPrimaryDark
-            : AppColors.textPrimaryLight,
+        backgroundColor: c.bgPage,
+        foregroundColor: c.textPrimary,
         elevation: 0,
         centerTitle: true,
       ),
       bottomNavigationBarTheme: BottomNavigationBarThemeData(
-        backgroundColor: isDark
-            ? AppColors.backgroundDark
-            : AppColors.backgroundLight,
-        selectedItemColor: AppColors.primary,
-        unselectedItemColor: isDark
-            ? AppColors.textSecondaryDark
-            : AppColors.textSecondaryLight,
+        backgroundColor: c.bgCard,
+        selectedItemColor: c.tabActive,
+        unselectedItemColor: c.tabInactive,
         type: BottomNavigationBarType.fixed,
         showUnselectedLabels: true,
       ),
+      cardTheme: CardThemeData(
+        color: c.bgCard,
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppConstants.radiusMd),
+        ),
+      ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
-          backgroundColor: AppColors.primary,
+          backgroundColor: c.primary,
           foregroundColor: AppColors.onPrimary,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(AppConstants.radiusMd),

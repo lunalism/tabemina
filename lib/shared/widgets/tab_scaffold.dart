@@ -31,11 +31,7 @@ class TabScaffold extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    final unselectedColor = isDark
-        ? AppColors.textSecondaryDark
-        : AppColors.textSecondaryLight;
+    final c = AppColors.of(context);
 
     return Scaffold(
       body: navigationShell,
@@ -43,11 +39,9 @@ class TabScaffold extends StatelessWidget {
         currentIndex: navigationShell.currentIndex,
         onTap: _onTap,
         type: BottomNavigationBarType.fixed,
-        backgroundColor: isDark
-            ? AppColors.backgroundDark
-            : AppColors.backgroundLight,
-        selectedItemColor: AppColors.primary,
-        unselectedItemColor: unselectedColor,
+        backgroundColor: c.bgCard,
+        selectedItemColor: c.tabActive,
+        unselectedItemColor: c.tabInactive,
         showUnselectedLabels: true,
         items: [
           const BottomNavigationBarItem(
@@ -90,15 +84,16 @@ class _ReviewFabIcon extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = AppColors.of(context);
     return Container(
       width: 40,
       height: 40,
       decoration: BoxDecoration(
-        color: AppColors.primary,
+        color: c.primary,
         borderRadius: BorderRadius.circular(AppConstants.radiusMd),
         boxShadow: [
           BoxShadow(
-            color: AppColors.primary.withValues(alpha: active ? 0.5 : 0.3),
+            color: c.primary.withValues(alpha: active ? 0.5 : 0.3),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
