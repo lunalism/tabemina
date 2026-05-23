@@ -46,3 +46,6 @@ app.*.map.json
 
 # iOS secrets (template is committed, real keys are not)
 ios/Runner/Secrets.xcconfig
+
+# Dart secrets (template is committed, real keys are not)
+lib/core/config/api_keys.dart

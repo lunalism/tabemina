@@ -1,0 +1,6 @@
+/// Template for `api_keys.dart` (gitignored).
+///
+/// Copy this file to `api_keys.dart` in the same directory and replace the
+/// placeholder. The real file is excluded from git so the key never reaches
+/// the remote.
+const String googleMapsApiKey = 'YOUR_GOOGLE_MAPS_API_KEY';

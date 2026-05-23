@@ -6,7 +6,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_constants.dart';
-import '../providers/location_provider.dart';
+import '../../../../core/providers/location_providers.dart';
 
 /// Floating "recenter on me" circle drawn over the map.
 ///
