@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import '../../../../core/providers/app_locale_provider.dart';
 import '../../../../core/providers/location_providers.dart';
@@ -41,6 +42,25 @@ class SearchQueryNotifier extends Notifier<String> {
 final searchQueryProvider =
     NotifierProvider<SearchQueryNotifier, String>(SearchQueryNotifier.new);
 
+/// User-driven override of the nearby-search center.
+///
+/// Default `null` → the search uses the user's GPS position. When the user
+/// pans the map and taps "Search this area", the screen writes the new map
+/// center here so [searchResultsProvider] refetches around that point
+/// instead of the user's position. The GPS button clears the override.
+class SearchCenterOverrideNotifier extends Notifier<LatLng?> {
+  @override
+  LatLng? build() => null;
+
+  void setCenter(LatLng center) => state = center;
+  void clear() => state = null;
+}
+
+final searchCenterOverrideProvider =
+    NotifierProvider<SearchCenterOverrideNotifier, LatLng?>(
+  SearchCenterOverrideNotifier.new,
+);
+
 final _placesDatasourceProvider = Provider<PlacesApiDatasource>(
   (ref) => PlacesApiDatasource(),
 );
@@ -57,9 +77,12 @@ final searchResultsProvider =
   final filter = ref.watch(searchFilterProvider);
   final locale = ref.watch(appLocaleProvider);
   final position = await ref.watch(currentPositionProvider.future);
+  final override = ref.watch(searchCenterOverrideProvider);
   final datasource = ref.read(_placesDatasourceProvider);
 
   if (query.length >= 2) {
+    // Text search keeps the user's position as the bias — overrides only
+    // matter for "Search this area" which is a nearby-mode affordance.
     return datasource.searchByText(
       query: query,
       languageCode: locale.languageCode,
@@ -69,19 +92,22 @@ final searchResultsProvider =
     );
   }
 
-  // No / too-short query → nearby. Need a position for the bias circle.
-  if (position == null) return const [];
+  // No / too-short query → nearby. Use the override when set, else the
+  // user's GPS position.
+  final lat = override?.latitude ?? position?.latitude;
+  final lng = override?.longitude ?? position?.longitude;
+  if (lat == null || lng == null) return const [];
 
   if (filter == SearchFilter.all) {
     return datasource.searchNearbyRestaurants(
-      latitude: position.latitude,
-      longitude: position.longitude,
+      latitude: lat,
+      longitude: lng,
       languageCode: locale.languageCode,
     );
   }
   return datasource.searchNearbyByType(
-    latitude: position.latitude,
-    longitude: position.longitude,
+    latitude: lat,
+    longitude: lng,
     primaryType: filterPrimaryType(filter)!,
     languageCode: locale.languageCode,
   );
@@ -164,6 +190,19 @@ String filterChipLabel(SearchFilter filter, String languageCode) {
         case SearchFilter.yakiniku:
           return 'Yakiniku';
       }
+  }
+}
+
+/// Localized "Search this area" pill label.
+String searchThisAreaLabel(String languageCode) {
+  switch (languageCode) {
+    case 'ja':
+      return 'このエリアで検索';
+    case 'ko':
+      return '이 지역에서 검색';
+    case 'en':
+    default:
+      return 'Search this area';
   }
 }
 

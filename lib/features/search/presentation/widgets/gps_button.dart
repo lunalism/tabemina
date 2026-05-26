@@ -19,6 +19,7 @@ class GpsButton extends ConsumerStatefulWidget {
     super.key,
     required this.mapController,
     this.zoom = AppConstants.defaultMapZoom,
+    this.onCentered,
   });
 
   /// Completer wrapping the [GoogleMapController]. The host screen completes
@@ -28,6 +29,11 @@ class GpsButton extends ConsumerStatefulWidget {
 
   /// Zoom level applied when recentering. Defaults to the app-wide map zoom.
   final double zoom;
+
+  /// Fired with the user's resolved position after the camera animation
+  /// completes. The Search screen uses this to drop its "Search this area"
+  /// override and reset its baseline.
+  final ValueChanged<LatLng>? onCentered;
 
   @override
   ConsumerState<GpsButton> createState() => _GpsButtonState();
@@ -44,15 +50,14 @@ class _GpsButtonState extends ConsumerState<GpsButton> {
           .read(locationServiceProvider)
           .getCurrentPosition();
       if (position == null || !mounted) return;
+      final target = LatLng(position.latitude, position.longitude);
       final controller = await widget.mapController.future;
       await controller.animateCamera(
         CameraUpdate.newCameraPosition(
-          CameraPosition(
-            target: LatLng(position.latitude, position.longitude),
-            zoom: widget.zoom,
-          ),
+          CameraPosition(target: target, zoom: widget.zoom),
         ),
       );
+      widget.onCentered?.call(target);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
