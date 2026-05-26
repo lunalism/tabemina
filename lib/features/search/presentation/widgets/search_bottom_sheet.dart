@@ -1,23 +1,23 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_constants.dart';
+import '../../../../core/providers/app_locale_provider.dart';
+import '../../../../core/providers/location_providers.dart';
+import '../providers/search_providers.dart';
 import 'filter_chip_row.dart';
-import 'restaurant_peek_card.dart';
+import 'restaurant_list_item.dart';
+import 'search_empty_state.dart';
 
-/// Bottom sheet for the Search tab — 3-snap draggable list of nearby restaurants.
+/// Bottom sheet for the Search tab — 3-snap draggable list, driven by
+/// [searchResultsProvider].
 ///
 /// Snap states (fractions of the host's available height):
 ///   - collapsed (0.20): handle + header + a single peek card visible
 ///   - half      (0.52): + filter chips + a few cards visible
 ///   - full      (0.86): full list scrolls inside the sheet
-///
-/// The sheet uses Flutter's [DraggableScrollableSheet] with `snap: true`, so
-/// the same gesture that drags the sheet also scrolls the inner list once the
-/// sheet has reached `maxChildSize`. Caller passes in a
-/// [DraggableScrollableController] so it can drive both the sheet and other
-/// chrome (e.g. the GPS button) that needs to track the sheet position.
-class SearchBottomSheet extends StatelessWidget {
+class SearchBottomSheet extends ConsumerWidget {
   const SearchBottomSheet({super.key, required this.controller});
 
   final DraggableScrollableController controller;
@@ -28,12 +28,21 @@ class SearchBottomSheet extends StatelessWidget {
   static const double fullSize = 0.86;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final c = AppColors.of(context);
     final isDark = Theme.of(context).brightness == Brightness.dark;
     // The handle uses different border tokens per mode to match the spec
     // (#D3D1C7 light / #444441 dark) without introducing a one-off token.
     final handleColor = isDark ? c.borderPrimary : c.borderSecondary;
+
+    final lang = ref.watch(appLocaleProvider).languageCode;
+    final labels = SearchHeaderLabels.of(lang);
+    final asyncResults = ref.watch(searchResultsProvider);
+    final query = ref.watch(searchQueryProvider);
+    final hasQuery = query.isNotEmpty;
+    final userPosition = ref
+        .watch(currentPositionProvider)
+        .maybeWhen(data: (p) => p, orElse: () => null);
 
     return DraggableScrollableSheet(
       controller: controller,
@@ -67,19 +76,37 @@ class SearchBottomSheet extends StatelessWidget {
               padding: EdgeInsets.zero,
               children: [
                 _DragHandle(color: handleColor),
-                const _SheetHeader(),
+                _SheetHeader(
+                  hasQuery: hasQuery,
+                  count: asyncResults.maybeWhen(
+                    data: (list) => list.length,
+                    orElse: () => 0,
+                  ),
+                  labels: labels,
+                ),
                 const SizedBox(height: AppConstants.spaceSm),
                 const FilterChipRow(),
                 const SizedBox(height: AppConstants.spaceXs),
-                for (final r in _mockRestaurants)
-                  RestaurantPeekCard(
-                    name: r.name,
-                    rating: r.rating,
-                    reviewCount: r.reviewCount,
-                    priceRange: r.priceRange,
-                    priceEstimate: r.priceEstimate,
-                    distance: r.distance,
-                  ),
+                ...asyncResults.when(
+                  loading: () => [const _LoadingRow()],
+                  error: (e, _) => [_ErrorRow(message: e.toString())],
+                  data: (items) {
+                    if (items.isEmpty) {
+                      if (hasQuery) {
+                        return [SearchEmptyState(labels: labels)];
+                      }
+                      return [const _NearbyEmptyRow()];
+                    }
+                    return [
+                      for (final r in items)
+                        RestaurantListItem(
+                          restaurant: r,
+                          userLat: userPosition?.latitude,
+                          userLng: userPosition?.longitude,
+                        ),
+                    ];
+                  },
+                ),
                 const SizedBox(height: AppConstants.space2xl),
               ],
             ),
@@ -114,7 +141,15 @@ class _DragHandle extends StatelessWidget {
 }
 
 class _SheetHeader extends StatelessWidget {
-  const _SheetHeader();
+  const _SheetHeader({
+    required this.hasQuery,
+    required this.count,
+    required this.labels,
+  });
+
+  final bool hasQuery;
+  final int count;
+  final SearchHeaderLabels labels;
 
   @override
   Widget build(BuildContext context) {
@@ -131,7 +166,7 @@ class _SheetHeader extends StatelessWidget {
         textBaseline: TextBaseline.alphabetic,
         children: [
           Text(
-            'Near you',
+            hasQuery ? labels.results : labels.nearYou,
             style: TextStyle(
               fontFamily: 'Pretendard',
               fontSize: 16,
@@ -141,7 +176,7 @@ class _SheetHeader extends StatelessWidget {
           ),
           const SizedBox(width: AppConstants.spaceSm),
           Text(
-            '${_mockRestaurants.length} found',
+            labels.found(count),
             style: TextStyle(
               fontFamily: 'Pretendard',
               fontSize: 13,
@@ -149,95 +184,95 @@ class _SheetHeader extends StatelessWidget {
             ),
           ),
           const Spacer(),
-          InkWell(
-            onTap: () {},
-            borderRadius: BorderRadius.circular(AppConstants.radiusSm),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: AppConstants.spaceXs,
-                vertical: 2,
-              ),
-              child: Text(
-                'Filter',
-                style: TextStyle(
-                  fontFamily: 'Pretendard',
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
-                  color: c.primary,
+          if (!hasQuery)
+            InkWell(
+              onTap: () {},
+              borderRadius: BorderRadius.circular(AppConstants.radiusSm),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppConstants.spaceXs,
+                  vertical: 2,
+                ),
+                child: Text(
+                  labels.filter,
+                  style: TextStyle(
+                    fontFamily: 'Pretendard',
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                    color: c.primary,
+                  ),
                 ),
               ),
             ),
-          ),
         ],
       ),
     );
   }
 }
 
-typedef _MockRestaurant = ({
-  String name,
-  double rating,
-  int reviewCount,
-  String priceRange,
-  String priceEstimate,
-  String distance,
-});
+class _LoadingRow extends StatelessWidget {
+  const _LoadingRow();
 
-const List<_MockRestaurant> _mockRestaurants = [
-  (
-    name: 'Sample Restaurant',
-    rating: 4.5,
-    reviewCount: 89,
-    priceRange: r'$$',
-    priceEstimate: '~¥2,500',
-    distance: '350m',
-  ),
-  (
-    name: 'Ichiran Shibuya',
-    rating: 4.3,
-    reviewCount: 1240,
-    priceRange: r'$$',
-    priceEstimate: '~¥1,800',
-    distance: '420m',
-  ),
-  (
-    name: 'Sushi Saito Annex',
-    rating: 4.8,
-    reviewCount: 312,
-    priceRange: r'$$$$',
-    priceEstimate: '~¥18,000',
-    distance: '680m',
-  ),
-  (
-    name: 'Torikizoku Marunouchi',
-    rating: 4.0,
-    reviewCount: 542,
-    priceRange: r'$',
-    priceEstimate: '~¥1,200',
-    distance: '510m',
-  ),
-  (
-    name: 'Blue Bottle Aoyama',
-    rating: 4.4,
-    reviewCount: 803,
-    priceRange: r'$$',
-    priceEstimate: '~¥900',
-    distance: '720m',
-  ),
-  (
-    name: 'Gonpachi Nishi-Azabu',
-    rating: 4.2,
-    reviewCount: 967,
-    priceRange: r'$$$',
-    priceEstimate: '~¥6,500',
-    distance: '1.1km',
-  ),
-  (
-    name: 'Café Kitsuné Aoyama',
-    rating: 4.5,
-    reviewCount: 421,
-    priceRange: r'$$',
-    priceEstimate: '~¥1,400',
-    distance: '850m',
-  ),
-];
+  @override
+  Widget build(BuildContext context) {
+    final c = AppColors.of(context);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: AppConstants.spaceLg),
+      child: Center(
+        child: SizedBox(
+          width: 20,
+          height: 20,
+          child: CircularProgressIndicator(strokeWidth: 2, color: c.primary),
+        ),
+      ),
+    );
+  }
+}
+
+class _ErrorRow extends StatelessWidget {
+  const _ErrorRow({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AppColors.of(context);
+    return Padding(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppConstants.spaceLg,
+        vertical: AppConstants.spaceLg,
+      ),
+      child: Text(
+        message,
+        style: TextStyle(
+          fontFamily: 'Pretendard',
+          fontSize: 12,
+          color: c.errorText,
+        ),
+      ),
+    );
+  }
+}
+
+class _NearbyEmptyRow extends StatelessWidget {
+  const _NearbyEmptyRow();
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AppColors.of(context);
+    return Padding(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppConstants.spaceLg,
+        vertical: AppConstants.spaceLg,
+      ),
+      child: Text(
+        'No restaurants nearby',
+        style: TextStyle(
+          fontFamily: 'Pretendard',
+          fontSize: 13,
+          color: c.textSecondary,
+        ),
+      ),
+    );
+  }
+}

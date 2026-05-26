@@ -1,46 +1,38 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_constants.dart';
+import '../../../../core/providers/app_locale_provider.dart';
+import '../providers/search_providers.dart';
 
-/// Horizontally scrollable row of category filter chips.
+/// Horizontally scrollable row of cuisine filter chips.
 ///
-/// Local state only — the selected index isn't lifted because filters aren't
-/// wired into search yet. Lifted-state version comes when the list is real.
-class FilterChipRow extends StatefulWidget {
+/// Reads / writes [searchFilterProvider] so any other widget (the results
+/// list, the markers, the empty state) can react to a filter change without
+/// going through this widget.
+class FilterChipRow extends ConsumerWidget {
   const FilterChipRow({super.key});
 
-  static const List<String> _labels = [
-    'All',
-    'Ramen',
-    'Sushi',
-    'Izakaya',
-    'Cafe',
-    'Date spot',
-    'Budget',
-  ];
-
   @override
-  State<FilterChipRow> createState() => _FilterChipRowState();
-}
+  Widget build(BuildContext context, WidgetRef ref) {
+    final selected = ref.watch(searchFilterProvider);
+    final lang = ref.watch(appLocaleProvider).languageCode;
 
-class _FilterChipRowState extends State<FilterChipRow> {
-  int _selected = 0;
-
-  @override
-  Widget build(BuildContext context) {
     return SizedBox(
       height: 28,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: AppConstants.spaceLg),
-        itemCount: FilterChipRow._labels.length,
+        itemCount: SearchFilter.values.length,
         separatorBuilder: (_, _) => const SizedBox(width: AppConstants.spaceSm),
         itemBuilder: (context, i) {
+          final filter = SearchFilter.values[i];
           return _FilterChip(
-            label: FilterChipRow._labels[i],
-            selected: i == _selected,
-            onTap: () => setState(() => _selected = i),
+            label: filterChipLabel(filter, lang),
+            selected: filter == selected,
+            onTap: () =>
+                ref.read(searchFilterProvider.notifier).select(filter),
           );
         },
       ),
@@ -63,9 +55,8 @@ class _FilterChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = AppColors.of(context);
     final borderColor = selected ? c.primary : c.borderSecondary;
-    final bgColor = selected
-        ? c.primary.withValues(alpha: 0.1)
-        : Colors.transparent;
+    final bgColor =
+        selected ? c.primary.withValues(alpha: 0.1) : Colors.transparent;
     final textColor = selected ? c.primary : c.textPrimary;
 
     return InkWell(

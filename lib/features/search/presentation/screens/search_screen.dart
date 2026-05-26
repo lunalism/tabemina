@@ -5,13 +5,19 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import '../../../../core/constants/app_constants.dart';
+import '../providers/search_providers.dart';
 import '../widgets/gps_button.dart';
 import '../widgets/search_bar_overlay.dart';
 import '../widgets/search_bottom_sheet.dart';
 
 /// Search tab — full-bleed Google Map with a floating search bar at the top,
-/// a draggable bottom sheet of nearby restaurants, and a GPS recenter button
-/// that tracks the sheet so it always sits just above it.
+/// a draggable bottom sheet of restaurants, and a GPS recenter button that
+/// tracks the sheet so it always sits just above it.
+///
+/// Markers are computed from [searchResultsProvider] so they update as the
+/// user types, switches filter chip, or moves location. We keep the marker
+/// IDs equal to the place ID so Flutter can diff the set cheaply between
+/// rebuilds.
 class SearchScreen extends ConsumerStatefulWidget {
   const SearchScreen({super.key});
 
@@ -33,6 +39,18 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final markers = ref.watch(searchResultsProvider).maybeWhen(
+          data: (items) => {
+            for (final r in items)
+              Marker(
+                markerId: MarkerId(r.id),
+                position: LatLng(r.latitude, r.longitude),
+                infoWindow: InfoWindow(title: r.name),
+              ),
+          },
+          orElse: () => <Marker>{},
+        );
+
     return Scaffold(
       extendBodyBehindAppBar: true,
       body: LayoutBuilder(
@@ -45,6 +63,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                   target: AppConstants.tokyoCenter,
                   zoom: AppConstants.defaultMapZoom,
                 ),
+                markers: markers,
                 myLocationButtonEnabled: false,
                 zoomControlsEnabled: false,
                 // Padding pushes Google's logo / attribution up so the sheet

@@ -91,6 +91,26 @@ class PlacesApiDatasource {
     );
   }
 
+  /// Nearby search restricted to a single primary type — used by the Search
+  /// tab's filter chips so each chip surfaces just that cuisine.
+  Future<List<NearbyRestaurant>> searchNearbyByType({
+    required double latitude,
+    required double longitude,
+    required String primaryType,
+    required String languageCode,
+    double radiusMeters = 1500,
+    int maxResults = 20,
+  }) {
+    return _searchNearby(
+      latitude: latitude,
+      longitude: longitude,
+      radiusMeters: radiusMeters,
+      maxResults: maxResults,
+      languageCode: languageCode,
+      includedPrimaryTypes: [primaryType],
+    );
+  }
+
   /// Nearby cafes / bakeries within [radiusMeters] of (lat, lng).
   ///
   /// Same shape as [searchNearbyRestaurants] but constrained to coffee /
@@ -114,18 +134,21 @@ class PlacesApiDatasource {
   }
 
   /// Free-text Places search. Used by the write-review flow when the user
-  /// arrives without a pre-selected restaurant.
+  /// arrives without a pre-selected restaurant, and by the Search tab.
   ///
   /// Falls back to a global search when [biasLatitude] / [biasLongitude] are
   /// null — passing them as a circle bias floats nearby matches to the top
-  /// without filtering out farther ones.
+  /// without filtering out farther ones. [includedType] (e.g.
+  /// `ramen_restaurant`) narrows the result type when the user has a chip
+  /// filter active.
   Future<List<NearbyRestaurant>> searchByText({
     required String query,
     required String languageCode,
+    String? includedType,
     double? biasLatitude,
     double? biasLongitude,
     double biasRadiusMeters = 5000,
-    int maxResults = 12,
+    int maxResults = 20,
   }) async {
     final uri = Uri.parse('$_baseUrl/places:searchText');
     final body = <String, dynamic>{
@@ -133,6 +156,7 @@ class PlacesApiDatasource {
       'languageCode': languageCode,
       'maxResultCount': maxResults,
     };
+    if (includedType != null) body['includedType'] = includedType;
     if (biasLatitude != null && biasLongitude != null) {
       body['locationBias'] = {
         'circle': {
