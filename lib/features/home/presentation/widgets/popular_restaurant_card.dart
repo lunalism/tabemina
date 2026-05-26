@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_constants.dart';
+import '../../../../core/router/app_router.dart';
 import '../../data/datasources/places_api_datasource.dart';
 import '../../data/models/nearby_restaurant.dart';
 
@@ -24,49 +26,57 @@ class PopularRestaurantCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = AppColors.of(context);
-    return Container(
-      width: 150,
-      decoration: BoxDecoration(
-        color: c.bgCard,
-        borderRadius: BorderRadius.circular(AppConstants.radiusMd),
-        border: Border.all(color: c.borderPrimary),
-      ),
+    return Material(
+      color: c.bgCard,
+      borderRadius: BorderRadius.circular(AppConstants.radiusMd),
       clipBehavior: Clip.antiAlias,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Stack(
+      child: InkWell(
+        onTap: () => context.push(
+          AppRoutes.restaurantDetailFor(restaurant.id),
+        ),
+        child: Container(
+          width: 150,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(AppConstants.radiusMd),
+            border: Border.all(color: c.borderPrimary),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _Photo(photoName: restaurant.photoName),
-              Positioned(
-                top: 6,
-                left: 6,
-                child: _RankBadge(rank: rank),
+              Stack(
+                children: [
+                  _Photo(photoName: restaurant.photoName),
+                  Positioned(
+                    top: 6,
+                    left: 6,
+                    child: _RankBadge(rank: rank),
+                  ),
+                ],
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      restaurant.name,
+                      style: TextStyle(
+                        fontFamily: 'Pretendard',
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                        color: c.textPrimary,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 4),
+                    _MetaLine(restaurant: restaurant),
+                  ],
+                ),
               ),
             ],
           ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  restaurant.name,
-                  style: TextStyle(
-                    fontFamily: 'Pretendard',
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
-                    color: c.textPrimary,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 4),
-                _MetaLine(restaurant: restaurant),
-              ],
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }

@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../features/bookmarks/presentation/screens/bookmarks_screen.dart';
 import '../../features/home/presentation/screens/home_screen.dart';
 import '../../features/mypage/presentation/screens/mypage_screen.dart';
+import '../../features/restaurant_detail/presentation/screens/restaurant_detail_screen.dart';
 import '../../features/review/presentation/screens/review_screen.dart';
 import '../../features/search/presentation/screens/search_screen.dart';
 import '../../features/splash/presentation/screens/splash_screen.dart';
@@ -17,6 +18,10 @@ abstract class AppRoutes {
   static const String review = '/review';
   static const String bookmarks = '/bookmarks';
   static const String mypage = '/mypage';
+  static const String restaurantDetail = '/restaurant';
+
+  static String restaurantDetailFor(String placeId) =>
+      '$restaurantDetail/$placeId';
 }
 
 /// GoRouter configuration.
@@ -44,6 +49,31 @@ final GoRouter appRouter = GoRouter(
           );
         },
       ),
+    ),
+    // Restaurant detail lives outside the tab shell so its slide transition
+    // (and full-bleed hero) push over the tab bar.
+    GoRoute(
+      path: '${AppRoutes.restaurantDetail}/:placeId',
+      pageBuilder: (context, state) {
+        final placeId = state.pathParameters['placeId']!;
+        return CustomTransitionPage<void>(
+          key: state.pageKey,
+          child: RestaurantDetailScreen(placeId: placeId),
+          transitionDuration: const Duration(milliseconds: 260),
+          reverseTransitionDuration: const Duration(milliseconds: 220),
+          transitionsBuilder: (context, animation, secondaryAnimation, child) {
+            return SlideTransition(
+              position: Tween<Offset>(
+                begin: const Offset(1, 0),
+                end: Offset.zero,
+              ).animate(
+                CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
+              ),
+              child: child,
+            );
+          },
+        );
+      },
     ),
     StatefulShellRoute.indexedStack(
       builder: (context, state, navigationShell) =>

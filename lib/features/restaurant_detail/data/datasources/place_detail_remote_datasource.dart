@@ -1,0 +1,70 @@
+import 'dart:convert';
+
+import 'package:http/http.dart' as http;
+
+import '../../../../core/config/api_keys.dart';
+import '../models/place_detail.dart';
+
+/// Thin client over Google Places (New) — Place Details endpoint.
+///
+/// Auth uses the per-request `X-Goog-Api-Key` header; `X-Goog-FieldMask`
+/// limits the response to the fields the detail screen actually renders so
+/// we don't pay for data we throw away.
+class PlaceDetailRemoteDatasource {
+  PlaceDetailRemoteDatasource({http.Client? client})
+      : _client = client ?? http.Client();
+
+  final http.Client _client;
+
+  static const String _baseUrl = 'https://places.googleapis.com/v1';
+  static const String _fieldMask =
+      'id,displayName,formattedAddress,nationalPhoneNumber,'
+      'internationalPhoneNumber,websiteUri,rating,userRatingCount,priceLevel,'
+      'currentOpeningHours,regularOpeningHours,photos,types,primaryType,'
+      'editorialSummary,googleMapsUri,location,businessStatus';
+
+  Future<PlaceDetail> fetch(String placeId) async {
+    final uri = Uri.parse('$_baseUrl/places/$placeId');
+    final response = await _client.get(
+      uri,
+      headers: {
+        'X-Goog-Api-Key': googleMapsApiKey,
+        'X-Goog-FieldMask': _fieldMask,
+      },
+    );
+
+    if (response.statusCode != 200) {
+      throw PlaceDetailException(
+        statusCode: response.statusCode,
+        body: response.body,
+      );
+    }
+
+    final decoded = jsonDecode(response.body) as Map<String, dynamic>;
+    return PlaceDetail.fromJson(decoded);
+  }
+
+  /// Build the image URL for a Places photo resource name.
+  ///
+  /// The endpoint 302-redirects to googleusercontent.com; `Image.network`
+  /// follows redirects so the URL is safe to feed in directly.
+  static String photoUrl(
+    String photoName, {
+    int maxHeightPx = 800,
+    int maxWidthPx = 800,
+  }) {
+    return '$_baseUrl/$photoName/media'
+        '?maxHeightPx=$maxHeightPx'
+        '&maxWidthPx=$maxWidthPx'
+        '&key=$googleMapsApiKey';
+  }
+}
+
+class PlaceDetailException implements Exception {
+  PlaceDetailException({required this.statusCode, required this.body});
+  final int statusCode;
+  final String body;
+
+  @override
+  String toString() => 'PlaceDetailException($statusCode): $body';
+}
