@@ -7,7 +7,10 @@ class GetPlaceDetail {
 
   final PlaceDetailRepository _repository;
 
-  Future<PlaceDetail> call(String placeId) {
-    return _repository.getPlaceDetail(placeId);
+  Future<PlaceDetail> call(
+    String placeId, {
+    required String languageCode,
+  }) {
+    return _repository.getPlaceDetail(placeId, languageCode: languageCode);
   }
 }

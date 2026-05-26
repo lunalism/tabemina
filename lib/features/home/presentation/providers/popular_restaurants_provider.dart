@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/providers/app_locale_provider.dart';
 import '../../../../core/providers/location_providers.dart';
 import '../../data/datasources/places_api_datasource.dart';
 import '../../data/models/nearby_restaurant.dart';
@@ -29,24 +30,31 @@ final _getNearbyCafesProvider = Provider<GetNearbyCafes>(
 /// Resolves [currentPositionProvider] first; if there's no fix, returns an
 /// empty list rather than an error so the UI can show its "no nearby
 /// restaurants" empty state without distinguishing causes.
+///
+/// Watches [appLocaleProvider] so changing the app language re-fetches with
+/// localized names / addresses.
 final popularRestaurantsProvider =
     FutureProvider<List<NearbyRestaurant>>((ref) async {
   final position = await ref.watch(currentPositionProvider.future);
   if (position == null) return const [];
+  final locale = ref.watch(appLocaleProvider);
   return ref.read(_getPopularRestaurantsProvider)(
     latitude: position.latitude,
     longitude: position.longitude,
+    languageCode: locale.languageCode,
   );
 });
 
 /// Nearby cafes for the "Cafes nearby" carousel. Same empty-list-on-no-fix
-/// behaviour as [popularRestaurantsProvider].
+/// behaviour as [popularRestaurantsProvider]; same locale-aware re-fetch.
 final nearbyCafesProvider =
     FutureProvider<List<NearbyRestaurant>>((ref) async {
   final position = await ref.watch(currentPositionProvider.future);
   if (position == null) return const [];
+  final locale = ref.watch(appLocaleProvider);
   return ref.read(_getNearbyCafesProvider)(
     latitude: position.latitude,
     longitude: position.longitude,
+    languageCode: locale.languageCode,
   );
 });

@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/providers/app_locale_provider.dart';
 import '../../data/datasources/place_detail_remote_datasource.dart';
 import '../../data/models/place_detail.dart';
 import '../../data/repositories/place_detail_repository_impl.dart';
@@ -21,10 +22,14 @@ final _getPlaceDetailProvider = Provider<GetPlaceDetail>(
 /// Place details, keyed by `placeId`.
 ///
 /// `.family` keys per-place; `autoDispose` keeps the cache bounded as users
-/// browse around. Combined with Riverpod's per-key caching, hitting back from
-/// detail and re-opening the same restaurant short-circuits without a refetch
-/// as long as something in the tree still listens to it.
+/// browse around. Watches [appLocaleProvider] so changing the app language
+/// re-fetches every active entry with localized name / address / hours
+/// without needing manual invalidation from the language selector.
 final placeDetailProvider =
     FutureProvider.autoDispose.family<PlaceDetail, String>((ref, placeId) {
-  return ref.read(_getPlaceDetailProvider)(placeId);
+  final locale = ref.watch(appLocaleProvider);
+  return ref.read(_getPlaceDetailProvider)(
+    placeId,
+    languageCode: locale.languageCode,
+  );
 });

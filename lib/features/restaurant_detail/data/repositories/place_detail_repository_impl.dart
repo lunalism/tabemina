@@ -8,7 +8,10 @@ class PlaceDetailRepositoryImpl implements PlaceDetailRepository {
   final PlaceDetailRemoteDatasource _datasource;
 
   @override
-  Future<PlaceDetail> getPlaceDetail(String placeId) {
-    return _datasource.fetch(placeId);
+  Future<PlaceDetail> getPlaceDetail(
+    String placeId, {
+    required String languageCode,
+  }) {
+    return _datasource.fetch(placeId, languageCode: languageCode);
   }
 }

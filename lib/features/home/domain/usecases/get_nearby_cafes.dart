@@ -14,10 +14,12 @@ class GetNearbyCafes {
   Future<List<NearbyRestaurant>> call({
     required double latitude,
     required double longitude,
+    required String languageCode,
   }) {
     return _repository.getNearbyCafes(
       latitude: latitude,
       longitude: longitude,
+      languageCode: languageCode,
     );
   }
 }

@@ -71,9 +71,13 @@ class PlacesApiDatasource {
 
   /// Nearby restaurants within [radiusMeters] of (lat, lng), capped by
   /// [maxResults]. Sorted server-side by popularity; callers can re-sort.
+  ///
+  /// [languageCode] is a 2-letter ISO code (en / ja / ko). The Places API
+  /// returns `displayName` (and other localized fields) in that language.
   Future<List<NearbyRestaurant>> searchNearbyRestaurants({
     required double latitude,
     required double longitude,
+    required String languageCode,
     double radiusMeters = 1500,
     int maxResults = 20,
   }) {
@@ -82,6 +86,7 @@ class PlacesApiDatasource {
       longitude: longitude,
       radiusMeters: radiusMeters,
       maxResults: maxResults,
+      languageCode: languageCode,
       includedPrimaryTypes: _restaurantPrimaryTypes,
     );
   }
@@ -94,6 +99,7 @@ class PlacesApiDatasource {
   Future<List<NearbyRestaurant>> searchNearbyCafes({
     required double latitude,
     required double longitude,
+    required String languageCode,
     double radiusMeters = 1500,
     int maxResults = 10,
   }) {
@@ -102,6 +108,7 @@ class PlacesApiDatasource {
       longitude: longitude,
       radiusMeters: radiusMeters,
       maxResults: maxResults,
+      languageCode: languageCode,
       includedPrimaryTypes: _cafePrimaryTypes,
     );
   }
@@ -111,6 +118,7 @@ class PlacesApiDatasource {
     required double longitude,
     required double radiusMeters,
     required int maxResults,
+    required String languageCode,
     required List<String> includedPrimaryTypes,
   }) async {
     final uri = Uri.parse('$_baseUrl/places:searchNearby');
@@ -125,6 +133,7 @@ class PlacesApiDatasource {
         'includedPrimaryTypes': includedPrimaryTypes,
         'maxResultCount': maxResults,
         'rankPreference': 'POPULARITY',
+        'languageCode': languageCode,
         'locationRestriction': {
           'circle': {
             'center': {'latitude': latitude, 'longitude': longitude},

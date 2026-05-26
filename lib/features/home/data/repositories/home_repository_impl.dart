@@ -40,10 +40,12 @@ class HomeRepositoryImpl implements HomeRepository {
   Future<List<NearbyRestaurant>> getPopularRestaurants({
     required double latitude,
     required double longitude,
+    required String languageCode,
   }) async {
     final results = await _datasource.searchNearbyRestaurants(
       latitude: latitude,
       longitude: longitude,
+      languageCode: languageCode,
     );
     final filtered = results.where(_isNotGlobalChain).toList();
     filtered.sort(_byRatingDesc);
@@ -54,10 +56,12 @@ class HomeRepositoryImpl implements HomeRepository {
   Future<List<NearbyRestaurant>> getNearbyCafes({
     required double latitude,
     required double longitude,
+    required String languageCode,
   }) async {
     final results = await _datasource.searchNearbyCafes(
       latitude: latitude,
       longitude: longitude,
+      languageCode: languageCode,
     );
     results.sort(_byRatingDesc);
     return results;

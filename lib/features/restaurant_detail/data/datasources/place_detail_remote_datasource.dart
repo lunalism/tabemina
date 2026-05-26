@@ -23,8 +23,13 @@ class PlaceDetailRemoteDatasource {
       'currentOpeningHours,regularOpeningHours,photos,types,primaryType,'
       'editorialSummary,googleMapsUri,location,businessStatus';
 
-  Future<PlaceDetail> fetch(String placeId) async {
-    final uri = Uri.parse('$_baseUrl/places/$placeId');
+  Future<PlaceDetail> fetch(
+    String placeId, {
+    required String languageCode,
+  }) async {
+    final uri = Uri.parse('$_baseUrl/places/$placeId').replace(
+      queryParameters: {'languageCode': languageCode},
+    );
     final response = await _client.get(
       uri,
       headers: {
