@@ -2,16 +2,24 @@ import 'package:flutter/material.dart';
 
 import '../../data/datasources/place_detail_remote_datasource.dart';
 
-/// Photo carousel that lives in the detail screen's SliverAppBar
-/// `flexibleSpace`.
+/// Photo carousel for the top of the detail screen.
 ///
 /// Caps at 5 photos so the page-indicator row stays scannable; if the place
 /// has zero photos, falls back to a neutral fork-knife placeholder that
 /// matches the home card empty state.
+///
+/// Owns its own back button so the hero is the only thing layered over the
+/// photo — no app bar, no title, no share action. The button is inset by the
+/// status-bar height so it doesn't sit on the iOS notch / Dynamic Island.
 class HeroGallery extends StatefulWidget {
-  const HeroGallery({super.key, required this.photoNames});
+  const HeroGallery({
+    super.key,
+    required this.photoNames,
+    required this.onBack,
+  });
 
   final List<String> photoNames;
+  final VoidCallback onBack;
 
   static const int maxPhotos = 5;
 
@@ -34,6 +42,7 @@ class _HeroGalleryState extends State<HeroGallery> {
     final photos =
         widget.photoNames.take(HeroGallery.maxPhotos).toList(growable: false);
     final hasPhotos = photos.isNotEmpty;
+    final statusBar = MediaQuery.paddingOf(context).top;
 
     return Stack(
       fit: StackFit.expand,
@@ -48,8 +57,8 @@ class _HeroGalleryState extends State<HeroGallery> {
         else
           const _Placeholder(),
 
-        // Top gradient overlay so the back/share buttons (placed by the
-        // parent SliverAppBar) stay readable on bright photos.
+        // Top gradient overlay so the back button + status bar icons stay
+        // readable on bright photos.
         const Positioned(
           top: 0,
           left: 0,
@@ -81,7 +90,38 @@ class _HeroGalleryState extends State<HeroGallery> {
             child: _PageDots(count: photos.length, active: _page),
           ),
         ],
+
+        Positioned(
+          top: statusBar + 8,
+          left: 8,
+          child: HeroBackButton(onTap: widget.onBack),
+        ),
       ],
+    );
+  }
+}
+
+/// Translucent-black round back button used both inside [HeroGallery] and on
+/// the loading / error states so the affordance stays put across all three.
+class HeroBackButton extends StatelessWidget {
+  const HeroBackButton({super.key, required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: const Color(0x59000000),
+      shape: const CircleBorder(),
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: onTap,
+        child: const SizedBox(
+          width: 34,
+          height: 34,
+          child: Icon(Icons.arrow_back_rounded, size: 20, color: Colors.white),
+        ),
+      ),
     );
   }
 }

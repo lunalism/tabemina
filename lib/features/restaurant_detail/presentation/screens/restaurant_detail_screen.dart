@@ -71,9 +71,14 @@ class _DetailContent extends StatelessWidget {
   Widget build(BuildContext context) {
     return CustomScrollView(
       slivers: [
-        _HeroSliverAppBar(
-          detail: detail,
-          expandedHeight: expandedHeight,
+        SliverToBoxAdapter(
+          child: SizedBox(
+            height: expandedHeight,
+            child: HeroGallery(
+              photoNames: detail.photoNames,
+              onBack: () => context.pop(),
+            ),
+          ),
         ),
         SliverToBoxAdapter(child: InfoSection(detail: detail)),
         SliverToBoxAdapter(
@@ -103,74 +108,6 @@ class _DetailContent extends StatelessWidget {
         const SliverToBoxAdapter(child: _ReviewsSection()),
         const SliverToBoxAdapter(child: SizedBox(height: 100)),
       ],
-    );
-  }
-}
-
-class _HeroSliverAppBar extends StatelessWidget {
-  const _HeroSliverAppBar({
-    required this.detail,
-    required this.expandedHeight,
-  });
-
-  final PlaceDetail detail;
-  final double expandedHeight;
-
-  @override
-  Widget build(BuildContext context) {
-    return SliverAppBar(
-      expandedHeight: expandedHeight,
-      pinned: true,
-      backgroundColor: AppColors.of(context).bgPage,
-      foregroundColor: AppColors.of(context).textPrimary,
-      elevation: 0,
-      scrolledUnderElevation: 0,
-      leading: _CircleAppBarButton(
-        icon: Icons.arrow_back_rounded,
-        onTap: () => context.pop(),
-      ),
-      actions: [
-        _CircleAppBarButton(
-          icon: Icons.share_outlined,
-          onTap: () {},
-        ),
-        const SizedBox(width: 8),
-      ],
-      title: Text(
-        detail.displayName,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-      ),
-      flexibleSpace: FlexibleSpaceBar(
-        background: HeroGallery(photoNames: detail.photoNames),
-      ),
-    );
-  }
-}
-
-class _CircleAppBarButton extends StatelessWidget {
-  const _CircleAppBarButton({required this.icon, required this.onTap});
-
-  final IconData icon;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.all(8),
-      child: Material(
-        color: const Color(0x59000000),
-        shape: const CircleBorder(),
-        child: InkWell(
-          customBorder: const CircleBorder(),
-          onTap: onTap,
-          child: SizedBox(
-            width: 32,
-            height: 32,
-            child: Icon(icon, size: 18, color: Colors.white),
-          ),
-        ),
-      ),
     );
   }
 }
@@ -301,21 +238,22 @@ class _LoadingScaffold extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = AppColors.of(context);
+    final statusBar = MediaQuery.paddingOf(context).top;
     return CustomScrollView(
       slivers: [
-        SliverAppBar(
-          expandedHeight: expandedHeight,
-          pinned: true,
-          backgroundColor: c.bgPage,
-          foregroundColor: c.textPrimary,
-          elevation: 0,
-          scrolledUnderElevation: 0,
-          leading: _CircleAppBarButton(
-            icon: Icons.arrow_back_rounded,
-            onTap: () => context.pop(),
-          ),
-          flexibleSpace: FlexibleSpaceBar(
-            background: Container(color: c.bgSkeleton),
+        SliverToBoxAdapter(
+          child: SizedBox(
+            height: expandedHeight,
+            child: Stack(
+              children: [
+                Positioned.fill(child: Container(color: c.bgSkeleton)),
+                Positioned(
+                  top: statusBar + 8,
+                  left: 8,
+                  child: HeroBackButton(onTap: () => context.pop()),
+                ),
+              ],
+            ),
           ),
         ),
         SliverToBoxAdapter(
@@ -403,10 +341,7 @@ class _ErrorView extends StatelessWidget {
           Positioned(
             top: 8,
             left: 8,
-            child: _CircleAppBarButton(
-              icon: Icons.arrow_back_rounded,
-              onTap: () => context.pop(),
-            ),
+            child: HeroBackButton(onTap: () => context.pop()),
           ),
           Center(
             child: Column(

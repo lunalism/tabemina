@@ -38,7 +38,7 @@ class MiniMap extends StatelessWidget {
       child: ClipRRect(
         borderRadius: BorderRadius.circular(12),
         child: Container(
-          height: 120,
+          height: 200,
           decoration: BoxDecoration(
             border: Border.all(color: c.borderPrimary, width: 0.5),
             borderRadius: BorderRadius.circular(12),
@@ -47,7 +47,7 @@ class MiniMap extends StatelessWidget {
             children: [
               GoogleMap(
                 liteModeEnabled: true,
-                initialCameraPosition: CameraPosition(target: position, zoom: 16),
+                initialCameraPosition: CameraPosition(target: position, zoom: 14.5),
                 markers: {
                   Marker(
                     markerId: MarkerId(placeId),
