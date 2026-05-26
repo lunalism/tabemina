@@ -4,7 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/router/app_router.dart';
-import '../providers/bookmarks_provider.dart';
+import '../bookmarks_labels.dart';
 
 /// Shown when [bookmarksProvider] resolves to an empty list. The "Explore
 /// nearby" CTA hops the user back to the Home tab where they can find

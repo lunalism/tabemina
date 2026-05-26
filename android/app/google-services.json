@@ -12,7 +12,12 @@
           "package_name": "com.tabemina.tabemina"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "2663332185-4r720gplbe0p5r16v9ecmsod2d8ujkd5.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyCkcno95cbnLuLtQsC21iZxT15ynDqRLzs"
@@ -20,7 +25,19 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "2663332185-4r720gplbe0p5r16v9ecmsod2d8ujkd5.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "2663332185-k0t5o9ambfmnonubf9cb3krgmhjg0rdj.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.tabemina.tabemina"
+              }
+            }
+          ]
         }
       }
     }

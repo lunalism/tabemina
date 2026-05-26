@@ -7,9 +7,11 @@ import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/providers/app_locale_provider.dart';
 import '../../../../core/router/app_router.dart';
+import '../../../../domain/entities/bookmark_entity.dart';
+import '../../../../presentation/providers/bookmark_providers.dart';
+import '../../../../presentation/widgets/auth_gate.dart';
 import '../../../../shared/widgets/tabemina_snackbar.dart';
-import '../../../bookmarks/domain/models/bookmarked_restaurant.dart';
-import '../../../bookmarks/presentation/providers/bookmarks_provider.dart';
+import '../../../bookmarks/presentation/bookmarks_labels.dart';
 import '../../data/datasources/place_detail_remote_datasource.dart';
 import '../../data/models/place_detail.dart';
 import '../providers/place_detail_provider.dart';
@@ -20,6 +22,7 @@ import '../widgets/info_grid.dart';
 import '../widgets/info_section.dart';
 import '../widgets/mini_map.dart';
 import '../widgets/review_card.dart';
+import '../widgets/tabemina_reviews_section.dart';
 
 /// Full restaurant detail page — hero gallery, info, action row, info grid,
 /// mini map, reviews, fixed bottom bar.
@@ -38,11 +41,9 @@ class RestaurantDetailScreen extends ConsumerWidget {
     final c = AppColors.of(context);
     final async = ref.watch(placeDetailProvider(placeId));
     // Bookmark status drives both the bottom bar icon and the action-row
-    // icon. Watching the list here (not the notifier method) is what makes
-    // the heart re-render reactively after a tap.
-    final saved = ref
-        .watch(bookmarksProvider)
-        .any((b) => b.placeId == placeId);
+    // icon. Watching the derived provider here is what makes the heart
+    // re-render reactively after a tap.
+    final saved = ref.watch(isBookmarkedProvider(placeId));
 
     return Scaffold(
       backgroundColor: c.bgPage,
@@ -50,10 +51,18 @@ class RestaurantDetailScreen extends ConsumerWidget {
         loading: () => const SizedBox.shrink(),
         error: (_, _) => const SizedBox.shrink(),
         data: (detail) => DetailBottomBar(
-          onWriteReview: () => _openWriteReview(context, detail),
+          onWriteReview: () => requireAuth(
+            context,
+            ref,
+            action: () => _openWriteReview(context, detail),
+          ),
           onRoute: () => _openExternalUrl(detail.googleMapsUri),
           saved: saved,
-          onSaveToggle: () => _toggleBookmark(context, ref, detail),
+          onSaveToggle: () => requireAuth(
+            context,
+            ref,
+            action: () => _toggleBookmark(context, ref, detail),
+          ),
         ),
       ),
       body: async.when(
@@ -67,7 +76,16 @@ class RestaurantDetailScreen extends ConsumerWidget {
           detail: detail,
           expandedHeight: _expandedHeroHeight,
           saved: saved,
-          onSaveToggle: () => _toggleBookmark(context, ref, detail),
+          onSaveToggle: () => requireAuth(
+            context,
+            ref,
+            action: () => _toggleBookmark(context, ref, detail),
+          ),
+          onWriteReview: () => requireAuth(
+            context,
+            ref,
+            action: () => _openWriteReview(context, detail),
+          ),
         ),
       ),
     );
@@ -80,12 +98,14 @@ class _DetailContent extends StatelessWidget {
     required this.expandedHeight,
     required this.saved,
     required this.onSaveToggle,
+    required this.onWriteReview,
   });
 
   final PlaceDetail detail;
   final double expandedHeight;
   final bool saved;
   final VoidCallback onSaveToggle;
+  final VoidCallback onWriteReview;
 
   @override
   Widget build(BuildContext context) {
@@ -103,7 +123,7 @@ class _DetailContent extends StatelessWidget {
         SliverToBoxAdapter(child: InfoSection(detail: detail)),
         SliverToBoxAdapter(
           child: ActionButtons(
-            onReview: () => _openWriteReview(context, detail),
+            onReview: onWriteReview,
             onSave: onSaveToggle,
             onRoute: () => _openExternalUrl(detail.googleMapsUri),
             onShare: () {},
@@ -126,6 +146,9 @@ class _DetailContent extends StatelessWidget {
               onTap: () => _openExternalUrl(detail.googleMapsUri),
             ),
           ),
+        SliverToBoxAdapter(
+          child: TabeminaReviewsSection(placeId: detail.id),
+        ),
         const SliverToBoxAdapter(child: _ReviewsSection()),
         const SliverToBoxAdapter(child: SizedBox(height: 100)),
       ],
@@ -186,7 +209,7 @@ class _ReviewsSection extends StatelessWidget {
             child: Row(
               children: [
                 Text(
-                  'Reviews',
+                  'Google Reviews',
                   style: TextStyle(
                     fontFamily: 'Pretendard',
                     fontSize: 16,
@@ -416,35 +439,37 @@ class _ErrorView extends StatelessWidget {
   }
 }
 
-/// Toggle the restaurant's bookmark status, persisting through the
-/// SharedPreferences-backed notifier, and surface a localized snackbar so
-/// the user knows the tap registered.
+/// Toggle the restaurant's bookmark status through the active repo
+/// (Firestore when signed in, SharedPreferences when guest) and surface a
+/// localized snackbar so the user knows the tap registered.
 void _toggleBookmark(BuildContext context, WidgetRef ref, PlaceDetail detail) {
-  final notifier = ref.read(bookmarksProvider.notifier);
+  final repo = ref.read(bookmarkRepositoryProvider);
   final lang = ref.read(appLocaleProvider).languageCode;
   final labels = BookmarksLabels.of(lang);
   final coral = AppColors.of(context).primary;
-  final alreadySaved = notifier.isBookmarked(detail.id);
+  final alreadySaved = ref.read(isBookmarkedProvider(detail.id));
 
   if (alreadySaved) {
-    notifier.remove(detail.id);
+    repo.removeBookmark(detail.id);
     showTabeminaSnackbar(
       context,
       message: labels.removedSnack,
       icon: Icons.bookmark_outline_rounded,
     );
   } else {
-    notifier.add(BookmarkedRestaurant(
+    repo.addBookmark(BookmarkEntity(
       placeId: detail.id,
-      name: detail.displayName,
-      photoUrl: detail.photoNames.isNotEmpty
+      placeName: detail.displayName,
+      placeAddress: detail.formattedAddress,
+      placeLat: detail.lat,
+      placeLng: detail.lng,
+      placePhotoUrl: detail.photoNames.isNotEmpty
           ? PlaceDetailRemoteDatasource.photoUrl(detail.photoNames.first)
           : null,
-      rating: detail.rating,
+      placeRating: detail.rating,
       userRatingCount: detail.userRatingCount,
       priceLevel: detail.priceLevel,
       primaryType: detail.primaryType,
-      address: detail.formattedAddress,
       savedAt: DateTime.now(),
     ));
     showTabeminaSnackbar(

@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -6,8 +8,12 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/providers/app_locale_provider.dart';
-import '../../data/repositories/review_repository.dart';
+import '../../../../domain/repositories/review_repository.dart';
+import '../../../../presentation/providers/auth_providers.dart';
+import '../../../../presentation/providers/review_providers.dart';
+import '../../../../shared/widgets/tabemina_snackbar.dart';
 import '../../domain/models/review_draft.dart';
+import '../../domain/models/tag_definitions.dart';
 import '../widgets/anonymous_toggle.dart';
 import '../widgets/comment_section.dart';
 import '../widgets/discard_dialog.dart';
@@ -165,31 +171,76 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
 
   Future<void> _post() async {
     if (!_canPost) return;
+    final user = ref.read(currentUserProvider);
+    final lang = ref.read(appLocaleProvider).languageCode;
+    final l = _Labels.of(lang);
+    if (user == null) {
+      // The flow gates auth before opening this screen, so a null user here
+      // means the session expired between gate and submit — surface a
+      // friendly message instead of crashing.
+      showTabeminaSnackbar(context, message: l.signInRequired);
+      return;
+    }
+
     HapticFeedback.mediumImpact();
     setState(() => _posting = true);
 
-    final draft = ReviewDraft(
-      restaurant: _restaurant!,
-      photos: List.unmodifiable(_photos),
-      rating: _rating,
-      tagKeys: Set.unmodifiable(_tagKeys),
+    final moodTags = <String>[];
+    final priceTags = <String>[];
+    for (final key in _tagKeys) {
+      final def = kAllTags.firstWhere(
+        (t) => t.key == key,
+        orElse: () =>
+            const TagDefinition(key: '', category: TagCategory.mood),
+      );
+      if (def.key.isEmpty) continue;
+      switch (def.category) {
+        case TagCategory.mood:
+          moodTags.add(def.key);
+        case TagCategory.price:
+          priceTags.add(def.key);
+      }
+    }
+
+    final draft = ReviewDraftData(
+      userId: user.uid,
+      userName: _anonymous
+          ? l.anonymousAuthor
+          : (user.displayName?.isNotEmpty == true
+              ? user.displayName!
+              : l.anonymousAuthor),
+      userPhotoUrl: _anonymous ? null : user.photoUrl,
+      placeId: _restaurant!.placeId,
+      placeName: _restaurant!.name,
+      rating: _rating.toDouble(),
       comment: _comment.text,
-      anonymous: _anonymous,
+      moodTags: moodTags,
+      priceTags: priceTags,
+      language: lang,
     );
 
     try {
-      await const ReviewRepository().postReview(draft);
+      await ref.read(reviewRepositoryProvider).submitReview(
+            draft,
+            _photos.map((x) => File(x.path)).toList(),
+          );
+      // Refresh the home feed's latest reviews so the user sees their post
+      // when they go back. The placeReviewsProvider on the detail screen
+      // is already a stream, so it'll pick the new doc up on its own.
+      ref.invalidate(latestReviewsProvider);
+      ref.invalidate(userReviewsProvider);
       if (!mounted) return;
-      final lang = ref.read(appLocaleProvider).languageCode;
-      final l = _Labels.of(lang);
       HapticFeedback.lightImpact();
-      // Wait for the success overlay to auto-dismiss, then close the screen.
       await SuccessOverlay.show(
         context,
         title: l.successTitle,
         subtitle: l.successSubtitle,
       );
       if (mounted) context.pop();
+    } catch (_) {
+      if (mounted) {
+        showTabeminaSnackbar(context, message: l.postFailed);
+      }
     } finally {
       if (mounted) setState(() => _posting = false);
     }
@@ -319,8 +370,11 @@ class _Labels {
     required this.commentPlaceholder,
     required this.anonymous,
     required this.anonymousHint,
+    required this.anonymousAuthor,
     required this.postReview,
     required this.posting,
+    required this.postFailed,
+    required this.signInRequired,
     required this.discardTitle,
     required this.discardBody,
     required this.discardYes,
@@ -352,8 +406,11 @@ class _Labels {
   final String commentPlaceholder;
   final String anonymous;
   final String anonymousHint;
+  final String anonymousAuthor;
   final String postReview;
   final String posting;
+  final String postFailed;
+  final String signInRequired;
   final String discardTitle;
   final String discardBody;
   final String discardYes;
@@ -403,8 +460,11 @@ class _Labels {
     commentPlaceholder: 'Share your experience in one line',
     anonymous: 'Post anonymously',
     anonymousHint: "Your name won't be shown on this review",
+    anonymousAuthor: 'Anonymous',
     postReview: 'Post review',
     posting: 'Posting...',
+    postFailed: "Couldn't post review. Please try again.",
+    signInRequired: 'Please sign in to post a review.',
     discardTitle: 'Discard review?',
     discardBody:
         'You have unsaved changes. Are you sure you want to discard this review?',
@@ -445,8 +505,11 @@ class _Labels {
     commentPlaceholder: '一言で感想を共有しよう',
     anonymous: '匿名で投稿',
     anonymousHint: 'このレビューに名前は表示されません',
+    anonymousAuthor: '匿名',
     postReview: 'レビューを投稿',
     posting: '投稿中...',
+    postFailed: 'レビューを投稿できませんでした。もう一度お試しください。',
+    signInRequired: 'レビューを投稿するにはログインが必要です。',
     discardTitle: 'レビューを破棄しますか?',
     discardBody: '未保存の変更があります。本当に破棄しますか?',
     discardYes: '破棄',
@@ -485,8 +548,11 @@ class _Labels {
     commentPlaceholder: '한 줄로 경험을 공유하세요',
     anonymous: '익명으로 게시',
     anonymousHint: '이 리뷰에 이름이 표시되지 않습니다',
+    anonymousAuthor: '익명',
     postReview: '리뷰 게시',
     posting: '게시 중...',
+    postFailed: '리뷰를 게시할 수 없습니다. 다시 시도해 주세요.',
+    signInRequired: '리뷰를 게시하려면 로그인이 필요합니다.',
     discardTitle: '리뷰를 삭제할까요?',
     discardBody: '저장되지 않은 변경 사항이 있습니다. 정말로 삭제하시겠어요?',
     discardYes: '삭제',

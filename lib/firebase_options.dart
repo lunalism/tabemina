@@ -63,6 +63,8 @@ class DefaultFirebaseOptions {
     messagingSenderId: '2663332185',
     projectId: 'tabemina',
     storageBucket: 'tabemina.firebasestorage.app',
+    iosClientId: '2663332185-k0t5o9ambfmnonubf9cb3krgmhjg0rdj.apps.googleusercontent.com',
     iosBundleId: 'com.tabemina.tabemina',
   );
+
 }

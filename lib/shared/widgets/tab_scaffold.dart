@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/router/app_router.dart';
+import '../../presentation/widgets/auth_gate.dart';
 
 /// Bottom tab navigation wrapper.
 ///
@@ -14,7 +16,7 @@ import '../../core/router/app_router.dart';
 ///
 /// The center "Review" tab is rendered as a raised, FAB-like action so adding
 /// a review reads as the app's primary call to action.
-class TabScaffold extends StatelessWidget {
+class TabScaffold extends ConsumerWidget {
   const TabScaffold({super.key, required this.navigationShell});
 
   /// The navigation shell driving the indexed stack of tab branches.
@@ -23,15 +25,20 @@ class TabScaffold extends StatelessWidget {
   static const int _reviewIndex = 2;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final c = AppColors.of(context);
 
     // The Review tab is special: tapping it shouldn't switch branches but
     // instead push the write-review modal over the current tab. This keeps
     // the user's place in the underlying tab when the modal is dismissed.
+    // Writing a review requires auth — gate behind the login sheet first.
     void onTap(int index) {
       if (index == _reviewIndex) {
-        context.push(AppRoutes.writeReview);
+        requireAuth(
+          context,
+          ref,
+          action: () => context.push(AppRoutes.writeReview),
+        );
         return;
       }
       navigationShell.goBranch(

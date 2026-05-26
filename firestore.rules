@@ -1,0 +1,27 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // User profiles. Display name + avatar are public so reviews can show
+    // them without an extra auth round-trip, but only the owner can write
+    // their own doc.
+    match /users/{uid} {
+      allow read: if true;
+      allow write: if request.auth != null && request.auth.uid == uid;
+
+      // Each user's saved restaurants live in a subcollection so the rule
+      // is trivially "uid-matches" and bookmarks can't leak across users.
+      match /bookmarks/{bookmarkId} {
+        allow read, write: if request.auth != null && request.auth.uid == uid;
+      }
+    }
+
+    // Reviews are public reads — guests can browse. Only signed-in users
+    // can create, and a review can only be edited/deleted by its author.
+    match /reviews/{reviewId} {
+      allow read: if true;
+      allow create: if request.auth != null;
+      allow update, delete:
+        if request.auth != null && request.auth.uid == resource.data.userId;
+    }
+  }
+}

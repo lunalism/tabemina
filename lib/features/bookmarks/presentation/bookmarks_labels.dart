@@ -1,75 +1,7 @@
-import 'dart:convert';
-
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-
-import '../../../../core/providers/app_locale_provider.dart';
-import '../../domain/models/bookmarked_restaurant.dart';
-
-/// All saved restaurants, persisted to SharedPreferences as a JSON array.
+/// Snackbar / empty-state / dialog strings for the bookmarks flow.
 ///
-/// Reads happen synchronously off [sharedPreferencesProvider] (which is
-/// awaited in `main`), so the list is correct on the very first frame — no
-/// async-data UI states needed in the Bookmarks tab.
-///
-/// Writes go through the notifier so we never get a race between two
-/// concurrent add/remove calls clobbering each other's JSON blob.
-class BookmarksNotifier extends Notifier<List<BookmarkedRestaurant>> {
-  static const _prefsKey = 'bookmarked_restaurants';
-
-  @override
-  List<BookmarkedRestaurant> build() {
-    final prefs = ref.read(sharedPreferencesProvider);
-    final raw = prefs.getString(_prefsKey);
-    if (raw == null || raw.isEmpty) return const [];
-    try {
-      final decoded = jsonDecode(raw) as List;
-      final list = decoded
-          .whereType<Map<String, dynamic>>()
-          .map(BookmarkedRestaurant.fromJson)
-          .toList();
-      list.sort((a, b) => b.savedAt.compareTo(a.savedAt));
-      return list;
-    } catch (_) {
-      // Corrupt JSON — drop it on the floor rather than crashing the tab.
-      return const [];
-    }
-  }
-
-  bool isBookmarked(String placeId) =>
-      state.any((b) => b.placeId == placeId);
-
-  /// Idempotent — saving the same restaurant twice replaces the existing
-  /// entry (so `savedAt` refreshes), keeping the list newest-first.
-  Future<void> add(BookmarkedRestaurant restaurant) async {
-    final next = [
-      restaurant,
-      ...state.where((b) => b.placeId != restaurant.placeId),
-    ];
-    state = next;
-    await _persist();
-  }
-
-  Future<void> remove(String placeId) async {
-    final next = state.where((b) => b.placeId != placeId).toList();
-    if (next.length == state.length) return;
-    state = next;
-    await _persist();
-  }
-
-  Future<void> _persist() async {
-    final prefs = ref.read(sharedPreferencesProvider);
-    final encoded =
-        jsonEncode(state.map((b) => b.toJson()).toList(growable: false));
-    await prefs.setString(_prefsKey, encoded);
-  }
-}
-
-final bookmarksProvider =
-    NotifierProvider<BookmarksNotifier, List<BookmarkedRestaurant>>(
-  BookmarksNotifier.new,
-);
-
-/// Snackbar / empty-state strings for the bookmarks flow.
+/// Lives here (not in the provider file) so screen widgets can import it
+/// without dragging the storage backend into their build dependencies.
 class BookmarksLabels {
   const BookmarksLabels({
     required this.title,
@@ -183,10 +115,6 @@ class BookmarksLabels {
 }
 
 /// Render the saved-at timestamp as a short relative string.
-///
-/// Anything older than ~12 months falls back to "Xy ago" — for v1 we don't
-/// expect users to keep multi-year bookmarks, but the branch is here so the
-/// string doesn't unexpectedly say "12 months ago" forever.
 String formatRelativeSaved(DateTime savedAt, BookmarksLabels l) {
   final diff = DateTime.now().difference(savedAt);
   if (diff.inSeconds < 60) return l.justNow(diff.inSeconds);

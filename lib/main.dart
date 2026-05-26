@@ -8,6 +8,8 @@ import 'core/providers/app_theme_mode_provider.dart';
 import 'core/router/app_router.dart';
 import 'core/theme/app_theme.dart';
 import 'firebase_options.dart';
+import 'presentation/providers/bookmark_providers.dart';
+import 'presentation/providers/user_providers.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -34,6 +36,12 @@ class TabeminaApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final mode = ref.watch(appThemeModeProvider);
+    // Side-effect providers — touch them so they activate on app start and
+    // run on every auth-state change. The user-profile-sync mirrors the
+    // signed-in account into `users/{uid}`; the bookmark migration moves
+    // guest-era SharedPreferences entries into Firestore on first sign-in.
+    ref.watch(userProfileSyncProvider);
+    ref.watch(bookmarkMigrationProvider);
     return MaterialApp.router(
       title: 'Tabemina',
       debugShowCheckedModeBanner: false,

@@ -4,9 +4,9 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/router/app_router.dart';
+import '../../../../domain/entities/bookmark_entity.dart';
 import '../../../home/data/models/nearby_restaurant.dart' show PriceLevel;
-import '../../domain/models/bookmarked_restaurant.dart';
-import '../providers/bookmarks_provider.dart';
+import '../bookmarks_labels.dart';
 
 /// One row in the Bookmarks list.
 ///
@@ -20,7 +20,7 @@ class BookmarkCard extends StatelessWidget {
     required this.onRemove,
   });
 
-  final BookmarkedRestaurant bookmark;
+  final BookmarkEntity bookmark;
   final BookmarksLabels labels;
   final VoidCallback onRemove;
 
@@ -39,7 +39,7 @@ class BookmarkCard extends StatelessWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _Thumbnail(photoUrl: bookmark.photoUrl),
+            _Thumbnail(photoUrl: bookmark.placePhotoUrl),
             const SizedBox(width: AppConstants.spaceMd),
             Expanded(
               child: Column(
@@ -47,7 +47,7 @@ class BookmarkCard extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                    bookmark.name,
+                    bookmark.placeName,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
@@ -161,17 +161,17 @@ class _Thumbnail extends StatelessWidget {
 class _MetaLine extends StatelessWidget {
   const _MetaLine({required this.bookmark});
 
-  final BookmarkedRestaurant bookmark;
+  final BookmarkEntity bookmark;
 
   @override
   Widget build(BuildContext context) {
     final c = AppColors.of(context);
     final parts = <String>[];
-    if (bookmark.rating != null) {
+    if (bookmark.placeRating != null) {
       final count = bookmark.userRatingCount != null
           ? ' (${bookmark.userRatingCount})'
           : '';
-      parts.add('★ ${bookmark.rating!.toStringAsFixed(1)}$count');
+      parts.add('★ ${bookmark.placeRating!.toStringAsFixed(1)}$count');
     }
     final price = PriceLevel.fromApi(bookmark.priceLevel)?.display;
     if (price != null) parts.add(price);
