@@ -23,7 +23,6 @@ void showTabeminaSnackbar(
   final messenger = ScaffoldMessenger.maybeOf(context);
   if (messenger == null) return;
   final c = AppColors.of(context);
-  final bottomInset = MediaQuery.of(context).padding.bottom;
 
   messenger
     ..clearSnackBars()
@@ -35,13 +34,15 @@ void showTabeminaSnackbar(
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(10),
         ),
-        margin: EdgeInsets.only(
+        // Floating snackbars are anchored above whichever bar the nearest
+        // Scaffold has (DetailBottomBar via `bottomNavigationBar`, or the
+        // tab bar when shown from a tab branch). Manually adding the bar's
+        // height was double-counting and pushing the pill into the middle
+        // of the page — `bottom: 8` is just the breathing-room gap.
+        margin: const EdgeInsets.only(
           left: AppConstants.spaceLg,
           right: AppConstants.spaceLg,
-          // 72 ≈ DetailBottomBar height (56) + breathing room (16). Adding
-          // the system inset keeps the gap consistent on Dynamic Island /
-          // gesture-bar devices.
-          bottom: 72 + bottomInset,
+          bottom: AppConstants.spaceSm,
         ),
         duration: duration,
         content: Row(
