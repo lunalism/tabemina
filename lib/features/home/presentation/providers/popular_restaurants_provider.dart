@@ -5,6 +5,7 @@ import '../../data/datasources/places_api_datasource.dart';
 import '../../data/models/nearby_restaurant.dart';
 import '../../data/repositories/home_repository_impl.dart';
 import '../../domain/repositories/home_repository.dart';
+import '../../domain/usecases/get_nearby_cafes.dart';
 import '../../domain/usecases/get_popular_restaurants.dart';
 
 final _placesDatasourceProvider = Provider<PlacesApiDatasource>(
@@ -19,6 +20,10 @@ final _getPopularRestaurantsProvider = Provider<GetPopularRestaurants>(
   (ref) => GetPopularRestaurants(ref.watch(_homeRepositoryProvider)),
 );
 
+final _getNearbyCafesProvider = Provider<GetNearbyCafes>(
+  (ref) => GetNearbyCafes(ref.watch(_homeRepositoryProvider)),
+);
+
 /// Popular restaurants near the user's current position.
 ///
 /// Resolves [currentPositionProvider] first; if there's no fix, returns an
@@ -29,6 +34,18 @@ final popularRestaurantsProvider =
   final position = await ref.watch(currentPositionProvider.future);
   if (position == null) return const [];
   return ref.read(_getPopularRestaurantsProvider)(
+    latitude: position.latitude,
+    longitude: position.longitude,
+  );
+});
+
+/// Nearby cafes for the "Cafes nearby" carousel. Same empty-list-on-no-fix
+/// behaviour as [popularRestaurantsProvider].
+final nearbyCafesProvider =
+    FutureProvider<List<NearbyRestaurant>>((ref) async {
+  final position = await ref.watch(currentPositionProvider.future);
+  if (position == null) return const [];
+  return ref.read(_getNearbyCafesProvider)(
     latitude: position.latitude,
     longitude: position.longitude,
   );

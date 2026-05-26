@@ -3,16 +3,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_constants.dart';
+import '../widgets/ad_banner_section.dart';
+import '../widgets/cafe_section.dart';
 import '../widgets/greeting_header.dart';
+import '../widgets/latest_reviews_section.dart';
 import '../widgets/location_pill.dart';
+import '../widgets/mood_section.dart';
 import '../widgets/popular_section.dart';
 
 /// Home feed — vertically scrolling stack of sections.
-///
-/// Phase 2-A wires up the greeting, the location pill, and the
-/// "Popular near you" Places-backed carousel. The ad banner, theme chips,
-/// and latest-reviews block are reserved as fixed-height placeholders so
-/// the scroll geometry doesn't shift when phase 2-B lands.
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
 
@@ -29,11 +28,10 @@ class HomeScreen extends ConsumerWidget {
             GreetingHeader(),
             LocationPill(),
             PopularSection(),
-            // Phase 2-B placeholders — fixed heights so the feed geometry
-            // is stable across the two phases.
-            SizedBox(height: 120), // ad banner
-            SizedBox(height: 80), // browse by mood
-            SizedBox(height: 300), // latest reviews
+            AdBannerSection(),
+            CafeSection(),
+            MoodSection(),
+            LatestReviewsSection(),
             SizedBox(height: AppConstants.space2xl),
           ],
         ),

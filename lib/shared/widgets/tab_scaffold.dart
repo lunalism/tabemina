@@ -43,6 +43,7 @@ class TabScaffold extends StatelessWidget {
         selectedItemColor: c.tabActive,
         unselectedItemColor: c.tabInactive,
         showUnselectedLabels: true,
+        iconSize: 24,
         items: [
           const BottomNavigationBarItem(
             icon: Icon(Icons.home_outlined),
@@ -77,6 +78,11 @@ class TabScaffold extends StatelessWidget {
 }
 
 /// The distinct, raised "+" action shown in the center tab slot.
+///
+/// The 40×40 raised square is bigger than [BottomNavigationBar]'s 24px icon
+/// slot — left unmanaged it stretches the whole bar. Anchoring it inside a
+/// 24-tall [SizedBox] with an [OverflowBox] keeps the bar at its intrinsic
+/// height while letting the FAB render at its full visual size.
 class _ReviewFabIcon extends StatelessWidget {
   const _ReviewFabIcon({required this.active});
 
@@ -85,21 +91,29 @@ class _ReviewFabIcon extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = AppColors.of(context);
-    return Container(
-      width: 40,
-      height: 40,
-      decoration: BoxDecoration(
-        color: c.primary,
-        borderRadius: BorderRadius.circular(AppConstants.radiusMd),
-        boxShadow: [
-          BoxShadow(
-            color: c.primary.withValues(alpha: active ? 0.5 : 0.3),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
+    return SizedBox(
+      width: 24,
+      height: 24,
+      child: OverflowBox(
+        maxWidth: 40,
+        maxHeight: 40,
+        child: Container(
+          width: 40,
+          height: 40,
+          decoration: BoxDecoration(
+            color: c.primary,
+            borderRadius: BorderRadius.circular(AppConstants.radiusMd),
+            boxShadow: [
+              BoxShadow(
+                color: c.primary.withValues(alpha: active ? 0.5 : 0.3),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+            ],
           ),
-        ],
+          child: const Icon(Icons.add, color: AppColors.onPrimary, size: 26),
+        ),
       ),
-      child: const Icon(Icons.add, color: AppColors.onPrimary, size: 26),
     );
   }
 }

@@ -9,4 +9,9 @@ abstract class HomeRepository {
     required double latitude,
     required double longitude,
   });
+
+  Future<List<NearbyRestaurant>> getNearbyCafes({
+    required double latitude,
+    required double longitude,
+  });
 }

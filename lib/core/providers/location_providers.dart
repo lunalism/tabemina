@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 
 import '../services/location_service.dart';
+import 'app_locale_provider.dart';
 
 /// Riverpod provider for the shared [LocationService] singleton.
 final locationServiceProvider = Provider<LocationService>(
@@ -20,11 +21,13 @@ final currentPositionProvider = FutureProvider<Position?>((ref) {
 /// City label derived from [currentPositionProvider] via reverse geocoding.
 ///
 /// `null` when there's no position or no resolvable placemark; the UI shows
-/// a "Locating..." fallback in that case.
+/// a "Locating..." fallback in that case. Watches [appLocaleProvider] so
+/// changing the app language re-fetches the placemark in the new language.
 final currentCityProvider = FutureProvider<String?>((ref) async {
   final position = await ref.watch(currentPositionProvider.future);
   if (position == null) return null;
+  final locale = ref.watch(appLocaleProvider);
   return ref
       .read(locationServiceProvider)
-      .getCityName(position.latitude, position.longitude);
+      .getCityName(position.latitude, position.longitude, locale: locale);
 });

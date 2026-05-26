@@ -21,13 +21,18 @@ class PlacesApiDatasource {
       'places.id,places.displayName,places.rating,places.userRatingCount,'
       'places.priceLevel,places.photos,places.location';
 
-  /// Food-and-drink Place primary types we accept in nearby search.
+  /// Restaurant Place primary types we accept for the "Popular near you"
+  /// carousel.
   ///
   /// Sent as `includedPrimaryTypes` (not `includedTypes`) so a venue only
   /// matches when its *primary* business type is on the list. The looser
   /// `includedTypes` filter matched anything that *contained* a restaurant,
   /// which leaked hotels, malls, and Pokemon Centers into the carousel.
-  static const List<String> _foodPrimaryTypes = [
+  ///
+  /// Cafes, bakeries and dessert shops live in [_cafePrimaryTypes] and surface
+  /// in the separate "Cafes nearby" section so the two feeds don't compete for
+  /// the same slots.
+  static const List<String> _restaurantPrimaryTypes = [
     'restaurant',
     'japanese_restaurant',
     'ramen_restaurant',
@@ -52,13 +57,16 @@ class PlacesApiDatasource {
     'vegan_restaurant',
     'vegetarian_restaurant',
     'brunch_restaurant',
+    'bar',
+    'meal_takeaway',
+  ];
+
+  static const List<String> _cafePrimaryTypes = [
     'cafe',
     'coffee_shop',
     'bakery',
-    'bar',
     'ice_cream_shop',
     'dessert_shop',
-    'meal_takeaway',
   ];
 
   /// Nearby restaurants within [radiusMeters] of (lat, lng), capped by
@@ -67,7 +75,43 @@ class PlacesApiDatasource {
     required double latitude,
     required double longitude,
     double radiusMeters = 1500,
+    int maxResults = 20,
+  }) {
+    return _searchNearby(
+      latitude: latitude,
+      longitude: longitude,
+      radiusMeters: radiusMeters,
+      maxResults: maxResults,
+      includedPrimaryTypes: _restaurantPrimaryTypes,
+    );
+  }
+
+  /// Nearby cafes / bakeries within [radiusMeters] of (lat, lng).
+  ///
+  /// Same shape as [searchNearbyRestaurants] but constrained to coffee /
+  /// dessert primary types so the "Cafes nearby" carousel doesn't share slots
+  /// with the restaurant feed.
+  Future<List<NearbyRestaurant>> searchNearbyCafes({
+    required double latitude,
+    required double longitude,
+    double radiusMeters = 1500,
     int maxResults = 10,
+  }) {
+    return _searchNearby(
+      latitude: latitude,
+      longitude: longitude,
+      radiusMeters: radiusMeters,
+      maxResults: maxResults,
+      includedPrimaryTypes: _cafePrimaryTypes,
+    );
+  }
+
+  Future<List<NearbyRestaurant>> _searchNearby({
+    required double latitude,
+    required double longitude,
+    required double radiusMeters,
+    required int maxResults,
+    required List<String> includedPrimaryTypes,
   }) async {
     final uri = Uri.parse('$_baseUrl/places:searchNearby');
     final response = await _client.post(
@@ -78,7 +122,7 @@ class PlacesApiDatasource {
         'X-Goog-FieldMask': _fieldMask,
       },
       body: jsonEncode({
-        'includedPrimaryTypes': _foodPrimaryTypes,
+        'includedPrimaryTypes': includedPrimaryTypes,
         'maxResultCount': maxResults,
         'rankPreference': 'POPULARITY',
         'locationRestriction': {
