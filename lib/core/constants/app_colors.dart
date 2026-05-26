@@ -33,6 +33,8 @@ class AppColors {
     required this.infoText,
     required this.tabActive,
     required this.tabInactive,
+    required this.snackbarBg,
+    required this.snackbarText,
   });
 
   // Primary palette
@@ -64,6 +66,11 @@ class AppColors {
   // Tabs
   final Color tabActive;
   final Color tabInactive;
+
+  // Snackbar (intentionally dark in both modes — the surface needs to read
+  // as a transient overlay against page content, not blend into it).
+  final Color snackbarBg;
+  final Color snackbarText;
 
   /// Foreground placed on top of the Coral primary in both modes.
   static const Color onPrimary = Color(0xFFFFFFFF);
@@ -97,6 +104,8 @@ class AppColors {
     infoText: Color(0xFF0C447C),
     tabActive: Color(0xFFE8593C),
     tabInactive: Color(0xFF888780),
+    snackbarBg: Color(0xF23D3A36),
+    snackbarText: Color(0xFFFAFAF8),
   );
 
   /// Dark theme tokens. Tinted backgrounds for semantic states are expressed
@@ -125,6 +134,8 @@ class AppColors {
     infoText: const Color(0xFF7BAAF0),
     tabActive: const Color(0xFFFF8C66),
     tabInactive: const Color(0xFF666660),
+    snackbarBg: const Color(0xF23D3D3A),
+    snackbarText: const Color(0xFFFAFAF8),
   );
 
   /// Resolve the right token set for the current theme brightness.

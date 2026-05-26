@@ -7,6 +7,7 @@ import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/providers/app_locale_provider.dart';
 import '../../../../core/router/app_router.dart';
+import '../../../../shared/widgets/tabemina_snackbar.dart';
 import '../../../bookmarks/domain/models/bookmarked_restaurant.dart';
 import '../../../bookmarks/presentation/providers/bookmarks_provider.dart';
 import '../../data/datasources/place_detail_remote_datasource.dart';
@@ -422,11 +423,16 @@ void _toggleBookmark(BuildContext context, WidgetRef ref, PlaceDetail detail) {
   final notifier = ref.read(bookmarksProvider.notifier);
   final lang = ref.read(appLocaleProvider).languageCode;
   final labels = BookmarksLabels.of(lang);
+  final coral = AppColors.of(context).primary;
   final alreadySaved = notifier.isBookmarked(detail.id);
 
   if (alreadySaved) {
     notifier.remove(detail.id);
-    _showSnack(context, labels.removedSnack);
+    showTabeminaSnackbar(
+      context,
+      message: labels.removedSnack,
+      icon: Icons.bookmark_outline_rounded,
+    );
   } else {
     notifier.add(BookmarkedRestaurant(
       placeId: detail.id,
@@ -441,27 +447,13 @@ void _toggleBookmark(BuildContext context, WidgetRef ref, PlaceDetail detail) {
       address: detail.formattedAddress,
       savedAt: DateTime.now(),
     ));
-    _showSnack(context, labels.savedSnack);
-  }
-}
-
-void _showSnack(BuildContext context, String message) {
-  final messenger = ScaffoldMessenger.maybeOf(context);
-  if (messenger == null) return;
-  messenger
-    ..clearSnackBars()
-    ..showSnackBar(
-      SnackBar(
-        content: Text(message),
-        duration: const Duration(milliseconds: 1800),
-        behavior: SnackBarBehavior.floating,
-        margin: const EdgeInsets.only(
-          left: AppConstants.spaceLg,
-          right: AppConstants.spaceLg,
-          bottom: 80,
-        ),
-      ),
+    showTabeminaSnackbar(
+      context,
+      message: labels.savedSnack,
+      icon: Icons.bookmark_rounded,
+      iconColor: coral,
     );
+  }
 }
 
 /// Hand off to the write-review modal, carrying just enough restaurant
