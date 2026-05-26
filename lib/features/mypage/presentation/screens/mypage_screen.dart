@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/providers/app_locale_provider.dart';
+import '../../../../core/providers/app_theme_mode_provider.dart';
+import '../widgets/appearance_selector_modal.dart';
 import '../widgets/language_selector_modal.dart';
 
 /// Minimal settings surface — guest header + a few system rows.
@@ -20,6 +22,8 @@ class MyPageScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final c = AppColors.of(context);
     final locale = ref.watch(appLocaleProvider);
+    final themeMode = ref.watch(appThemeModeProvider);
+    final lang = locale.languageCode;
 
     return Scaffold(
       backgroundColor: c.bgPage,
@@ -38,10 +42,10 @@ class MyPageScreen extends ConsumerWidget {
               onTap: () => LanguageSelectorModal.show(context),
             ),
             _SettingRow(
-              icon: Icons.dark_mode_outlined,
-              label: 'Dark mode',
-              trailing: 'System',
-              onTap: () {},
+              icon: Icons.brightness_6_outlined,
+              label: _appearanceLabel(lang),
+              trailing: themeModeDisplayName(themeMode, lang),
+              onTap: () => AppearanceSelectorModal.show(context),
             ),
             _SettingRow(
               icon: Icons.info_outline_rounded,
@@ -53,6 +57,18 @@ class MyPageScreen extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  static String _appearanceLabel(String lang) {
+    switch (lang) {
+      case 'ja':
+        return 'テーマ';
+      case 'ko':
+        return '테마';
+      case 'en':
+      default:
+        return 'Appearance';
+    }
   }
 }
 
