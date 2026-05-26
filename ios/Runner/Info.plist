@@ -10,6 +10,10 @@
 		<string>$(GOOGLE_MAPS_API_KEY)</string>
 		<key>NSLocationWhenInUseUsageDescription</key>
 		<string>Tabemina uses your location to center the map on where you are and to find restaurants nearby.</string>
+		<key>NSCameraUsageDescription</key>
+		<string>Tabemina needs camera access so you can take photos of your meal to attach to your review.</string>
+		<key>NSPhotoLibraryUsageDescription</key>
+		<string>Tabemina needs photo library access so you can pick existing meal photos to attach to your review.</string>
 		<key>CFBundleDisplayName</key>
 		<string>Tabemina</string>
 		<key>CFBundleExecutable</key>

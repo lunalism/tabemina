@@ -5,6 +5,8 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_constants.dart';
+import '../../../../core/router/app_router.dart';
+import '../../data/datasources/place_detail_remote_datasource.dart';
 import '../../data/models/place_detail.dart';
 import '../providers/place_detail_provider.dart';
 import '../widgets/action_buttons.dart';
@@ -38,7 +40,7 @@ class RestaurantDetailScreen extends ConsumerWidget {
         loading: () => const SizedBox.shrink(),
         error: (_, _) => const SizedBox.shrink(),
         data: (detail) => DetailBottomBar(
-          onWriteReview: () {},
+          onWriteReview: () => _openWriteReview(context, detail),
           onRoute: () => _openExternalUrl(detail.googleMapsUri),
         ),
       ),
@@ -83,7 +85,7 @@ class _DetailContent extends StatelessWidget {
         SliverToBoxAdapter(child: InfoSection(detail: detail)),
         SliverToBoxAdapter(
           child: ActionButtons(
-            onReview: () {},
+            onReview: () => _openWriteReview(context, detail),
             onSave: () {},
             onRoute: () => _openExternalUrl(detail.googleMapsUri),
             onShare: () {},
@@ -393,6 +395,20 @@ class _ErrorView extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Hand off to the write-review modal, carrying just enough restaurant
+/// context that the form can render the mini header without re-fetching the
+/// full Place Detail.
+void _openWriteReview(BuildContext context, PlaceDetail detail) {
+  context.push(AppRoutes.writeReview, extra: {
+    'placeId': detail.id,
+    'name': detail.displayName,
+    'primaryType': detail.primaryType,
+    'photoUrl': detail.photoNames.isNotEmpty
+        ? PlaceDetailRemoteDatasource.photoUrl(detail.photoNames.first)
+        : null,
+  });
 }
 
 /// Open an external URL via the OS handler. Swallowing failures here is

@@ -8,6 +8,7 @@ import '../../features/restaurant_detail/presentation/screens/restaurant_detail_
 import '../../features/review/presentation/screens/review_screen.dart';
 import '../../features/search/presentation/screens/search_screen.dart';
 import '../../features/splash/presentation/screens/splash_screen.dart';
+import '../../features/write_review/presentation/screens/write_review_screen.dart';
 import '../../shared/widgets/tab_scaffold.dart';
 
 /// Route paths for the app's top-level destinations.
@@ -19,6 +20,7 @@ abstract class AppRoutes {
   static const String bookmarks = '/bookmarks';
   static const String mypage = '/mypage';
   static const String restaurantDetail = '/restaurant';
+  static const String writeReview = '/write-review';
 
   static String restaurantDetailFor(String placeId) =>
       '$restaurantDetail/$placeId';
@@ -49,6 +51,31 @@ final GoRouter appRouter = GoRouter(
           );
         },
       ),
+    ),
+    // Write-review modal — lives outside the tab shell so it slides up over
+    // the tab bar. Restaurant context comes through `extra` (may be null when
+    // the user opened from the tab bar without a pre-selected place).
+    GoRoute(
+      path: AppRoutes.writeReview,
+      pageBuilder: (context, state) {
+        return CustomTransitionPage<void>(
+          key: state.pageKey,
+          child: WriteReviewScreen.fromExtra(state.extra),
+          transitionDuration: const Duration(milliseconds: 280),
+          reverseTransitionDuration: const Duration(milliseconds: 220),
+          transitionsBuilder: (context, animation, secondaryAnimation, child) {
+            return SlideTransition(
+              position: Tween<Offset>(
+                begin: const Offset(0, 1),
+                end: Offset.zero,
+              ).animate(
+                CurvedAnimation(parent: animation, curve: Curves.easeOut),
+              ),
+              child: child,
+            );
+          },
+        );
+      },
     ),
     // Restaurant detail lives outside the tab shell so its slide transition
     // (and full-bleed hero) push over the tab bar.

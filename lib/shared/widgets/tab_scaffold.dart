@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_constants.dart';
+import '../../core/router/app_router.dart';
 
 /// Bottom tab navigation wrapper.
 ///
@@ -21,23 +22,29 @@ class TabScaffold extends StatelessWidget {
 
   static const int _reviewIndex = 2;
 
-  void _onTap(int index) {
-    // `initialLocation: true` when re-tapping the active tab pops it to root.
-    navigationShell.goBranch(
-      index,
-      initialLocation: index == navigationShell.currentIndex,
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final c = AppColors.of(context);
+
+    // The Review tab is special: tapping it shouldn't switch branches but
+    // instead push the write-review modal over the current tab. This keeps
+    // the user's place in the underlying tab when the modal is dismissed.
+    void onTap(int index) {
+      if (index == _reviewIndex) {
+        context.push(AppRoutes.writeReview);
+        return;
+      }
+      navigationShell.goBranch(
+        index,
+        initialLocation: index == navigationShell.currentIndex,
+      );
+    }
 
     return Scaffold(
       body: navigationShell,
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: navigationShell.currentIndex,
-        onTap: _onTap,
+        onTap: onTap,
         type: BottomNavigationBarType.fixed,
         backgroundColor: c.bgCard,
         selectedItemColor: c.tabActive,
@@ -83,6 +90,12 @@ class TabScaffold extends StatelessWidget {
 /// slot — left unmanaged it stretches the whole bar. Anchoring it inside a
 /// 24-tall [SizedBox] with an [OverflowBox] keeps the bar at its intrinsic
 /// height while letting the FAB render at its full visual size.
+///
+/// [Alignment.bottomCenter] on the OverflowBox pins the FAB's bottom to the
+/// icon-slot bottom so it extends *only upward* — without that the default
+/// `center` alignment let the FAB spill 8px below the slot and crash into
+/// the "Review" label. A small extra translate gives the label 4-6px of
+/// breathing room.
 class _ReviewFabIcon extends StatelessWidget {
   const _ReviewFabIcon({required this.active});
 
@@ -97,21 +110,25 @@ class _ReviewFabIcon extends StatelessWidget {
       child: OverflowBox(
         maxWidth: 40,
         maxHeight: 40,
-        child: Container(
-          width: 40,
-          height: 40,
-          decoration: BoxDecoration(
-            color: c.primary,
-            borderRadius: BorderRadius.circular(AppConstants.radiusMd),
-            boxShadow: [
-              BoxShadow(
-                color: c.primary.withValues(alpha: active ? 0.5 : 0.3),
-                blurRadius: 8,
-                offset: const Offset(0, 2),
-              ),
-            ],
+        alignment: Alignment.bottomCenter,
+        child: Transform.translate(
+          offset: const Offset(0, -4),
+          child: Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: c.primary,
+              borderRadius: BorderRadius.circular(AppConstants.radiusMd),
+              boxShadow: [
+                BoxShadow(
+                  color: c.primary.withValues(alpha: active ? 0.5 : 0.3),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: const Icon(Icons.add, color: AppColors.onPrimary, size: 26),
           ),
-          child: const Icon(Icons.add, color: AppColors.onPrimary, size: 26),
         ),
       ),
     );

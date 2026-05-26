@@ -13,6 +13,8 @@ class NearbyRestaurant {
     this.userRatingCount,
     this.priceLevel,
     this.photoName,
+    this.formattedAddress,
+    this.primaryType,
   });
 
   final String id;
@@ -26,6 +28,11 @@ class NearbyRestaurant {
   /// Resource name of the first photo (e.g. `places/abc/photos/xyz`).
   /// Convert to an image URL via [PlacesApiDatasource.photoUrl].
   final String? photoName;
+
+  /// Populated for text-search results, null for nearby-search results
+  /// (those rows don't render an address line).
+  final String? formattedAddress;
+  final String? primaryType;
 
   factory NearbyRestaurant.fromJson(Map<String, dynamic> json) {
     final displayName = json['displayName'] as Map<String, dynamic>?;
@@ -44,6 +51,8 @@ class NearbyRestaurant {
       userRatingCount: json['userRatingCount'] as int?,
       priceLevel: PriceLevel.fromApi(json['priceLevel'] as String?),
       photoName: firstPhoto?['name'] as String?,
+      formattedAddress: json['formattedAddress'] as String?,
+      primaryType: json['primaryType'] as String?,
     );
   }
 }

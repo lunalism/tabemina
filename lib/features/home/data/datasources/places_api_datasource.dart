@@ -113,6 +113,61 @@ class PlacesApiDatasource {
     );
   }
 
+  /// Free-text Places search. Used by the write-review flow when the user
+  /// arrives without a pre-selected restaurant.
+  ///
+  /// Falls back to a global search when [biasLatitude] / [biasLongitude] are
+  /// null — passing them as a circle bias floats nearby matches to the top
+  /// without filtering out farther ones.
+  Future<List<NearbyRestaurant>> searchByText({
+    required String query,
+    required String languageCode,
+    double? biasLatitude,
+    double? biasLongitude,
+    double biasRadiusMeters = 5000,
+    int maxResults = 12,
+  }) async {
+    final uri = Uri.parse('$_baseUrl/places:searchText');
+    final body = <String, dynamic>{
+      'textQuery': query,
+      'languageCode': languageCode,
+      'maxResultCount': maxResults,
+    };
+    if (biasLatitude != null && biasLongitude != null) {
+      body['locationBias'] = {
+        'circle': {
+          'center': {'latitude': biasLatitude, 'longitude': biasLongitude},
+          'radius': biasRadiusMeters,
+        },
+      };
+    }
+    final response = await _client.post(
+      uri,
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Goog-Api-Key': googleMapsApiKey,
+        // Search-result rows render formattedAddress + primaryType in addition
+        // to the standard fields, so the mask includes them.
+        'X-Goog-FieldMask':
+            '$_fieldMask,places.formattedAddress,places.primaryType',
+      },
+      body: jsonEncode(body),
+    );
+
+    if (response.statusCode != 200) {
+      throw PlacesApiException(
+        statusCode: response.statusCode,
+        body: response.body,
+      );
+    }
+
+    final decoded = jsonDecode(response.body) as Map<String, dynamic>;
+    final places = (decoded['places'] as List?) ?? const [];
+    return places
+        .map((p) => NearbyRestaurant.fromJson(p as Map<String, dynamic>))
+        .toList();
+  }
+
   Future<List<NearbyRestaurant>> _searchNearby({
     required double latitude,
     required double longitude,
