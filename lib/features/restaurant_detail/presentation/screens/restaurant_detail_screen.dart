@@ -5,7 +5,10 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_constants.dart';
+import '../../../../core/providers/app_locale_provider.dart';
 import '../../../../core/router/app_router.dart';
+import '../../../bookmarks/domain/models/bookmarked_restaurant.dart';
+import '../../../bookmarks/presentation/providers/bookmarks_provider.dart';
 import '../../data/datasources/place_detail_remote_datasource.dart';
 import '../../data/models/place_detail.dart';
 import '../providers/place_detail_provider.dart';
@@ -33,6 +36,12 @@ class RestaurantDetailScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final c = AppColors.of(context);
     final async = ref.watch(placeDetailProvider(placeId));
+    // Bookmark status drives both the bottom bar icon and the action-row
+    // icon. Watching the list here (not the notifier method) is what makes
+    // the heart re-render reactively after a tap.
+    final saved = ref
+        .watch(bookmarksProvider)
+        .any((b) => b.placeId == placeId);
 
     return Scaffold(
       backgroundColor: c.bgPage,
@@ -42,6 +51,8 @@ class RestaurantDetailScreen extends ConsumerWidget {
         data: (detail) => DetailBottomBar(
           onWriteReview: () => _openWriteReview(context, detail),
           onRoute: () => _openExternalUrl(detail.googleMapsUri),
+          saved: saved,
+          onSaveToggle: () => _toggleBookmark(context, ref, detail),
         ),
       ),
       body: async.when(
@@ -54,6 +65,8 @@ class RestaurantDetailScreen extends ConsumerWidget {
         data: (detail) => _DetailContent(
           detail: detail,
           expandedHeight: _expandedHeroHeight,
+          saved: saved,
+          onSaveToggle: () => _toggleBookmark(context, ref, detail),
         ),
       ),
     );
@@ -64,10 +77,14 @@ class _DetailContent extends StatelessWidget {
   const _DetailContent({
     required this.detail,
     required this.expandedHeight,
+    required this.saved,
+    required this.onSaveToggle,
   });
 
   final PlaceDetail detail;
   final double expandedHeight;
+  final bool saved;
+  final VoidCallback onSaveToggle;
 
   @override
   Widget build(BuildContext context) {
@@ -86,9 +103,10 @@ class _DetailContent extends StatelessWidget {
         SliverToBoxAdapter(
           child: ActionButtons(
             onReview: () => _openWriteReview(context, detail),
-            onSave: () {},
+            onSave: onSaveToggle,
             onRoute: () => _openExternalUrl(detail.googleMapsUri),
             onShare: () {},
+            saved: saved,
           ),
         ),
         SliverToBoxAdapter(
@@ -395,6 +413,55 @@ class _ErrorView extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Toggle the restaurant's bookmark status, persisting through the
+/// SharedPreferences-backed notifier, and surface a localized snackbar so
+/// the user knows the tap registered.
+void _toggleBookmark(BuildContext context, WidgetRef ref, PlaceDetail detail) {
+  final notifier = ref.read(bookmarksProvider.notifier);
+  final lang = ref.read(appLocaleProvider).languageCode;
+  final labels = BookmarksLabels.of(lang);
+  final alreadySaved = notifier.isBookmarked(detail.id);
+
+  if (alreadySaved) {
+    notifier.remove(detail.id);
+    _showSnack(context, labels.removedSnack);
+  } else {
+    notifier.add(BookmarkedRestaurant(
+      placeId: detail.id,
+      name: detail.displayName,
+      photoUrl: detail.photoNames.isNotEmpty
+          ? PlaceDetailRemoteDatasource.photoUrl(detail.photoNames.first)
+          : null,
+      rating: detail.rating,
+      userRatingCount: detail.userRatingCount,
+      priceLevel: detail.priceLevel,
+      primaryType: detail.primaryType,
+      address: detail.formattedAddress,
+      savedAt: DateTime.now(),
+    ));
+    _showSnack(context, labels.savedSnack);
+  }
+}
+
+void _showSnack(BuildContext context, String message) {
+  final messenger = ScaffoldMessenger.maybeOf(context);
+  if (messenger == null) return;
+  messenger
+    ..clearSnackBars()
+    ..showSnackBar(
+      SnackBar(
+        content: Text(message),
+        duration: const Duration(milliseconds: 1800),
+        behavior: SnackBarBehavior.floating,
+        margin: const EdgeInsets.only(
+          left: AppConstants.spaceLg,
+          right: AppConstants.spaceLg,
+          bottom: 80,
+        ),
+      ),
+    );
 }
 
 /// Hand off to the write-review modal, carrying just enough restaurant

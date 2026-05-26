@@ -15,12 +15,14 @@ class ActionButtons extends StatelessWidget {
     required this.onSave,
     required this.onRoute,
     required this.onShare,
+    required this.saved,
   });
 
   final VoidCallback onReview;
   final VoidCallback onSave;
   final VoidCallback onRoute;
   final VoidCallback onShare;
+  final bool saved;
 
   @override
   Widget build(BuildContext context) {
@@ -46,9 +48,11 @@ class ActionButtons extends StatelessWidget {
           const SizedBox(width: 8),
           Expanded(
             child: _ActionButton(
-              icon: Icons.bookmark_outline_rounded,
+              icon: saved
+                  ? Icons.bookmark_rounded
+                  : Icons.bookmark_outline_rounded,
               label: 'Save',
-              color: c.textSecondary,
+              color: saved ? c.primary : c.textSecondary,
               onTap: onSave,
             ),
           ),

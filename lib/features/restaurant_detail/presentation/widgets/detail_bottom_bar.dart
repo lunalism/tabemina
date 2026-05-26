@@ -6,25 +6,22 @@ import '../../../../core/constants/app_constants.dart';
 /// Sticky bottom action bar — primary "Write review" CTA plus square
 /// save/route buttons.
 ///
-/// Save is local state for now (it toggles fill/outline). Hooking the
-/// review CTA and the persisted bookmark store come with the review-write
-/// flow in a later batch.
-class DetailBottomBar extends StatefulWidget {
+/// Save state is owned by the parent (it lives in the bookmarks Notifier so
+/// the action row and bottom bar stay in sync) — this widget just renders
+/// the icon according to [saved].
+class DetailBottomBar extends StatelessWidget {
   const DetailBottomBar({
     super.key,
     required this.onWriteReview,
     required this.onRoute,
+    required this.onSaveToggle,
+    required this.saved,
   });
 
   final VoidCallback onWriteReview;
   final VoidCallback onRoute;
-
-  @override
-  State<DetailBottomBar> createState() => _DetailBottomBarState();
-}
-
-class _DetailBottomBarState extends State<DetailBottomBar> {
-  bool _saved = false;
+  final VoidCallback onSaveToggle;
+  final bool saved;
 
   @override
   Widget build(BuildContext context) {
@@ -46,21 +43,21 @@ class _DetailBottomBarState extends State<DetailBottomBar> {
           child: Row(
             children: [
               Expanded(
-                child: _PrimaryCta(onTap: widget.onWriteReview),
+                child: _PrimaryCta(onTap: onWriteReview),
               ),
               const SizedBox(width: 8),
               _SquareButton(
-                icon: _saved
+                icon: saved
                     ? Icons.bookmark_rounded
                     : Icons.bookmark_outline_rounded,
-                color: _saved ? c.primary : c.textSecondary,
-                onTap: () => setState(() => _saved = !_saved),
+                color: saved ? c.primary : c.textSecondary,
+                onTap: onSaveToggle,
               ),
               const SizedBox(width: 8),
               _SquareButton(
                 icon: Icons.navigation_outlined,
                 color: c.textSecondary,
-                onTap: widget.onRoute,
+                onTap: onRoute,
               ),
             ],
           ),
