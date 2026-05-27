@@ -1,29 +1,33 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_constants.dart';
-import '../../../../shared/widgets/bookmark_pulse.dart';
+import '../../../../presentation/providers/bookmark_providers.dart';
 
 /// Four-up action row under the info header: Review / Save / Route / Share.
 ///
 /// The "Review" CTA is filled with a faint coral tint so it reads as the
 /// primary action — the rest are outline so they don't compete with the
-/// fixed bottom bar's "Write review" button.
+/// fixed bottom bar's "Write review" button. The Save button is wrapped
+/// in [_BookmarkActionButton] (its own ConsumerWidget) so a bookmark
+/// toggle rebuilds only the Save tile — the rest of the scroll body
+/// stays put. The icon swap is intentionally un-animated.
 class ActionButtons extends StatelessWidget {
   const ActionButtons({
     super.key,
+    required this.placeId,
     required this.onReview,
     required this.onSave,
     required this.onRoute,
     required this.onShare,
-    required this.saved,
   });
 
+  final String placeId;
   final VoidCallback onReview;
   final VoidCallback onSave;
   final VoidCallback onRoute;
   final VoidCallback onShare;
-  final bool saved;
 
   @override
   Widget build(BuildContext context) {
@@ -48,16 +52,9 @@ class ActionButtons extends StatelessWidget {
           ),
           const SizedBox(width: 8),
           Expanded(
-            child: BookmarkPulse(
-              saved: saved,
-              child: _ActionButton(
-                icon: saved
-                    ? Icons.bookmark_rounded
-                    : Icons.bookmark_outline_rounded,
-                label: 'Save',
-                color: saved ? c.primary : c.textSecondary,
-                onTap: onSave,
-              ),
+            child: _BookmarkActionButton(
+              placeId: placeId,
+              onTap: onSave,
             ),
           ),
           const SizedBox(width: 8),
@@ -130,6 +127,28 @@ class _ActionButton extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Save tile — watches [isBookmarkedProvider] locally so a toggle rebuilds
+/// just this 56-tall slot, leaving the surrounding CustomScrollView's
+/// slivers (including the hero gallery) untouched.
+class _BookmarkActionButton extends ConsumerWidget {
+  const _BookmarkActionButton({required this.placeId, required this.onTap});
+
+  final String placeId;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final c = AppColors.of(context);
+    final saved = ref.watch(isBookmarkedProvider(placeId));
+    return _ActionButton(
+      icon: saved ? Icons.bookmark_rounded : Icons.bookmark_outline_rounded,
+      label: 'Save',
+      color: saved ? c.primary : c.textSecondary,
+      onTap: onTap,
     );
   }
 }

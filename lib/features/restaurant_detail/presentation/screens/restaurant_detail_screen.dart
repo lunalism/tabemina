@@ -10,6 +10,7 @@ import '../../../../core/router/app_router.dart';
 import '../../../../domain/entities/bookmark_entity.dart';
 import '../../../../presentation/providers/bookmark_providers.dart';
 import '../../../../presentation/widgets/auth_gate.dart';
+import '../../../../shared/widgets/shimmer_box.dart';
 import '../../../../shared/widgets/tabemina_snackbar.dart';
 import '../../../bookmarks/presentation/bookmarks_labels.dart';
 import '../../data/datasources/place_detail_remote_datasource.dart';
@@ -40,10 +41,11 @@ class RestaurantDetailScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final c = AppColors.of(context);
     final async = ref.watch(placeDetailProvider(placeId));
-    // Bookmark status drives both the bottom bar icon and the action-row
-    // icon. Watching the derived provider here is what makes the heart
-    // re-render reactively after a tap.
-    final saved = ref.watch(isBookmarkedProvider(placeId));
+    // We do *not* watch isBookmarkedProvider at this level on purpose:
+    // a bookmark toggle should rebuild only the two bookmark icons (one
+    // in the bottom bar, one in the action row), never this scaffold or
+    // its CustomScrollView. The icons watch the provider themselves
+    // inside the bottom bar / action buttons widgets.
 
     return Scaffold(
       backgroundColor: c.bgPage,
@@ -51,13 +53,13 @@ class RestaurantDetailScreen extends ConsumerWidget {
         loading: () => const SizedBox.shrink(),
         error: (_, _) => const SizedBox.shrink(),
         data: (detail) => DetailBottomBar(
+          placeId: detail.id,
           onWriteReview: () => requireAuth(
             context,
             ref,
             action: () => _openWriteReview(context, detail),
           ),
           onRoute: () => _openExternalUrl(detail.googleMapsUri),
-          saved: saved,
           onSaveToggle: () => requireAuth(
             context,
             ref,
@@ -75,7 +77,6 @@ class RestaurantDetailScreen extends ConsumerWidget {
         data: (detail) => _DetailContent(
           detail: detail,
           expandedHeight: _expandedHeroHeight,
-          saved: saved,
           onSaveToggle: () => requireAuth(
             context,
             ref,
@@ -96,14 +97,12 @@ class _DetailContent extends StatelessWidget {
   const _DetailContent({
     required this.detail,
     required this.expandedHeight,
-    required this.saved,
     required this.onSaveToggle,
     required this.onWriteReview,
   });
 
   final PlaceDetail detail;
   final double expandedHeight;
-  final bool saved;
   final VoidCallback onSaveToggle;
   final VoidCallback onWriteReview;
 
@@ -124,11 +123,11 @@ class _DetailContent extends StatelessWidget {
         SliverToBoxAdapter(child: InfoSection(detail: detail)),
         SliverToBoxAdapter(
           child: ActionButtons(
+            placeId: detail.id,
             onReview: onWriteReview,
             onSave: onSaveToggle,
             onRoute: () => _openExternalUrl(detail.googleMapsUri),
             onShare: () {},
-            saved: saved,
           ),
         ),
         SliverToBoxAdapter(
@@ -282,7 +281,6 @@ class _LoadingScaffold extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final c = AppColors.of(context);
     final statusBar = MediaQuery.paddingOf(context).top;
     return CustomScrollView(
       slivers: [
@@ -291,7 +289,12 @@ class _LoadingScaffold extends StatelessWidget {
             height: expandedHeight,
             child: Stack(
               children: [
-                Positioned.fill(child: Container(color: c.bgSkeleton)),
+                Positioned.fill(
+                  child: ShimmerBox(
+                    width: double.infinity,
+                    height: expandedHeight,
+                  ),
+                ),
                 Positioned(
                   top: statusBar + 8,
                   left: 8,
@@ -306,37 +309,28 @@ class _LoadingScaffold extends StatelessWidget {
             padding: const EdgeInsets.all(AppConstants.spaceLg),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _ShimmerBox(width: 220, height: 22, color: c.bgSkeleton),
-                const SizedBox(height: AppConstants.spaceSm),
-                _ShimmerBox(width: 160, height: 14, color: c.bgSkeleton),
-                const SizedBox(height: AppConstants.spaceSm),
-                _ShimmerBox(width: 120, height: 14, color: c.bgSkeleton),
-                const SizedBox(height: AppConstants.spaceLg),
-                Row(
-                  children: [
-                    for (int i = 0; i < 4; i++) ...[
-                      Expanded(
-                        child: _ShimmerBox(
-                          width: double.infinity,
-                          height: 56,
-                          color: c.bgSkeleton,
-                          radius: 12,
-                        ),
-                      ),
-                      if (i < 3) const SizedBox(width: 8),
-                    ],
-                  ],
-                ),
-                const SizedBox(height: AppConstants.spaceXl),
-                for (int i = 0; i < 4; i++) ...[
-                  _ShimmerBox(
-                    width: double.infinity,
-                    height: 16,
-                    color: c.bgSkeleton,
-                  ),
-                  const SizedBox(height: 14),
-                ],
+              children: const [
+                ShimmerBox(width: 200, height: 16),
+                SizedBox(height: 6),
+                ShimmerBox(width: 260, height: 12),
+                SizedBox(height: AppConstants.spaceLg),
+                _ActionButtonsSkeletonRow(),
+                SizedBox(height: AppConstants.spaceLg),
+                ShimmerBox(width: 80, height: 12),
+                SizedBox(height: AppConstants.spaceSm),
+                ShimmerBox(width: double.infinity, height: 14),
+                SizedBox(height: 6),
+                ShimmerBox(width: double.infinity, height: 14),
+                SizedBox(height: 6),
+                ShimmerBox(width: 220, height: 14),
+                SizedBox(height: AppConstants.spaceLg),
+                ShimmerBox(width: double.infinity, height: 140, borderRadius: 12),
+                SizedBox(height: AppConstants.spaceLg),
+                ShimmerBox(width: 70, height: 12),
+                SizedBox(height: AppConstants.spaceSm),
+                _ReviewSkeletonCard(opacity: 1.0),
+                SizedBox(height: AppConstants.spaceSm),
+                _ReviewSkeletonCard(opacity: 0.5),
               ],
             ),
           ),
@@ -346,27 +340,64 @@ class _LoadingScaffold extends StatelessWidget {
   }
 }
 
-class _ShimmerBox extends StatelessWidget {
-  const _ShimmerBox({
-    required this.width,
-    required this.height,
-    required this.color,
-    this.radius = 6,
-  });
-
-  final double width;
-  final double height;
-  final Color color;
-  final double radius;
+/// 4-up action button row (Review / Save / Route / Share) skeleton row,
+/// matched to the [ActionButtons] component's 56-tall rounded tiles.
+class _ActionButtonsSkeletonRow extends StatelessWidget {
+  const _ActionButtonsSkeletonRow();
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: width,
-      height: height,
-      decoration: BoxDecoration(
-        color: color,
-        borderRadius: BorderRadius.circular(radius),
+    return const Row(
+      children: [
+        Expanded(child: ShimmerBox(height: 44, borderRadius: 10)),
+        SizedBox(width: 8),
+        Expanded(child: ShimmerBox(height: 44, borderRadius: 10)),
+        SizedBox(width: 8),
+        Expanded(child: ShimmerBox(height: 44, borderRadius: 10)),
+        SizedBox(width: 8),
+        Expanded(child: ShimmerBox(height: 44, borderRadius: 10)),
+      ],
+    );
+  }
+}
+
+/// Inline review card skeleton — mirrors the layout of a real review
+/// card so the resolve transition doesn't reflow the surrounding stack.
+class _ReviewSkeletonCard extends StatelessWidget {
+  const _ReviewSkeletonCard({required this.opacity});
+
+  final double opacity;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AppColors.of(context);
+    return Opacity(
+      opacity: opacity,
+      child: Container(
+        padding: const EdgeInsets.all(AppConstants.spaceMd),
+        decoration: BoxDecoration(
+          color: c.bgCard,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: c.borderPrimary, width: 0.5),
+        ),
+        child: const Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                ShimmerCircle(size: 28),
+                SizedBox(width: AppConstants.spaceSm),
+                ShimmerBox(width: 100, height: 11),
+                Spacer(),
+                ShimmerBox(width: 50, height: 10),
+              ],
+            ),
+            SizedBox(height: AppConstants.spaceSm),
+            ShimmerBox(width: 60, height: 12),
+            SizedBox(height: AppConstants.spaceSm),
+            ShimmerBox(width: double.infinity, height: 60, borderRadius: 8),
+          ],
+        ),
       ),
     );
   }

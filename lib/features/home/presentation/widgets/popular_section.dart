@@ -121,14 +121,19 @@ class _Carousel extends StatelessWidget {
 class _LoadingRow extends StatelessWidget {
   const _LoadingRow();
 
+  // 3 cards with a fade-out tail so the third card reads as "more
+  // content loading just out of view" — matches the spec's
+  // 100/50/20% opacity stepping.
+  static const _opacities = [1.0, 0.5, 0.2];
+
   @override
   Widget build(BuildContext context) {
     return ListView.separated(
       scrollDirection: Axis.horizontal,
       padding: const EdgeInsets.symmetric(horizontal: AppConstants.spaceLg),
-      itemCount: 3,
+      itemCount: _opacities.length,
       separatorBuilder: (_, _) => const SizedBox(width: 10),
-      itemBuilder: (_, _) => const PopularCardSkeleton(),
+      itemBuilder: (_, i) => PopularCardSkeleton(opacity: _opacities[i]),
     );
   }
 }

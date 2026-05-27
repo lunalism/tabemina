@@ -1,28 +1,31 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_constants.dart';
-import '../../../../shared/widgets/bookmark_pulse.dart';
+import '../../../../presentation/providers/bookmark_providers.dart';
 
 /// Sticky bottom action bar — primary "Write review" CTA plus square
 /// save/route buttons.
 ///
-/// Save state is owned by the parent (it lives in the bookmarks Notifier so
-/// the action row and bottom bar stay in sync) — this widget just renders
-/// the icon according to [saved].
+/// The save button watches [isBookmarkedProvider] on its own (via the
+/// embedded [_BookmarkSquareButton] ConsumerWidget) so a bookmark toggle
+/// rebuilds just the 40×40 icon — not the whole detail screen. We don't
+/// animate the icon swap: the bounce was masking a layout shake we
+/// couldn't fully suppress, and a plain swap reads cleaner anyway.
 class DetailBottomBar extends StatelessWidget {
   const DetailBottomBar({
     super.key,
+    required this.placeId,
     required this.onWriteReview,
     required this.onRoute,
     required this.onSaveToggle,
-    required this.saved,
   });
 
+  final String placeId;
   final VoidCallback onWriteReview;
   final VoidCallback onRoute;
   final VoidCallback onSaveToggle;
-  final bool saved;
 
   @override
   Widget build(BuildContext context) {
@@ -47,15 +50,9 @@ class DetailBottomBar extends StatelessWidget {
                 child: _PrimaryCta(onTap: onWriteReview),
               ),
               const SizedBox(width: 8),
-              BookmarkPulse(
-                saved: saved,
-                child: _SquareButton(
-                  icon: saved
-                      ? Icons.bookmark_rounded
-                      : Icons.bookmark_outline_rounded,
-                  color: saved ? c.primary : c.textSecondary,
-                  onTap: onSaveToggle,
-                ),
+              _BookmarkSquareButton(
+                placeId: placeId,
+                onTap: onSaveToggle,
               ),
               const SizedBox(width: 8),
               _SquareButton(
@@ -137,6 +134,28 @@ class _SquareButton extends StatelessWidget {
         alignment: Alignment.center,
         child: Icon(icon, size: 20, color: color),
       ),
+    );
+  }
+}
+
+/// Lives at the leaf — watches [isBookmarkedProvider] so that toggling a
+/// bookmark only rebuilds this 40×40 square, never the containing
+/// [DetailBottomBar] or its parent scaffold. That's the load-bearing piece
+/// of the no-shake fix.
+class _BookmarkSquareButton extends ConsumerWidget {
+  const _BookmarkSquareButton({required this.placeId, required this.onTap});
+
+  final String placeId;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final c = AppColors.of(context);
+    final saved = ref.watch(isBookmarkedProvider(placeId));
+    return _SquareButton(
+      icon: saved ? Icons.bookmark_rounded : Icons.bookmark_outline_rounded,
+      color: saved ? c.primary : c.textSecondary,
+      onTap: onTap,
     );
   }
 }

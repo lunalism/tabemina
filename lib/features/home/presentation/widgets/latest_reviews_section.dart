@@ -11,6 +11,7 @@ import '../../../../features/restaurant_detail/presentation/widgets/tabemina_rev
     show formatRelative;
 import '../../../../presentation/providers/review_providers.dart';
 import '../../../../shared/widgets/network_image_fade.dart';
+import '../../../../shared/widgets/shimmer_box.dart';
 
 /// Home-feed "Latest reviews" — vertical stack of the 10 newest Tabemina
 /// reviews across all places. Falls back to a soft empty state until users
@@ -303,18 +304,52 @@ class _Avatar extends StatelessWidget {
 class _LoadingList extends StatelessWidget {
   const _LoadingList();
 
+  // Two cards with a fade-out tail; matches the layout of
+  // [_RealReviewCard] above so the resolve transition doesn't reflow
+  // the surrounding feed.
+  static const _opacities = [1.0, 0.5];
+
   @override
   Widget build(BuildContext context) {
     final c = AppColors.of(context);
     return Column(
       children: [
-        for (int i = 0; i < 2; i++) ...[
+        for (int i = 0; i < _opacities.length; i++) ...[
           if (i > 0) const SizedBox(height: 10),
-          Container(
-            height: 110,
-            decoration: BoxDecoration(
-              color: c.bgSkeleton,
-              borderRadius: BorderRadius.circular(12),
+          Opacity(
+            opacity: _opacities[i],
+            child: Container(
+              decoration: BoxDecoration(
+                color: c.bgCard,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: c.borderPrimary, width: 0.5),
+              ),
+              padding: const EdgeInsets.fromLTRB(
+                AppConstants.spaceMd + 11,
+                AppConstants.spaceMd,
+                AppConstants.spaceMd,
+                AppConstants.spaceMd,
+              ),
+              child: const Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      ShimmerCircle(size: 24),
+                      SizedBox(width: AppConstants.spaceSm),
+                      ShimmerBox(width: 80, height: 10),
+                      Spacer(),
+                      ShimmerBox(width: 50, height: 10),
+                    ],
+                  ),
+                  SizedBox(height: AppConstants.spaceSm),
+                  ShimmerBox(width: 90, height: 68, borderRadius: 10),
+                  SizedBox(height: AppConstants.spaceSm),
+                  ShimmerBox(width: double.infinity, height: 10),
+                  SizedBox(height: 6),
+                  ShimmerBox(width: 200, height: 10),
+                ],
+              ),
             ),
           ),
         ],

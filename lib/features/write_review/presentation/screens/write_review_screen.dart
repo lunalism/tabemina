@@ -252,14 +252,24 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
     final lang = ref.watch(appLocaleProvider).languageCode;
     final l = _Labels.of(lang);
 
-    return Scaffold(
-      backgroundColor: c.bgPage,
-      resizeToAvoidBottomInset: true,
-      appBar: ReviewTopBar(
-        title: l.screenTitle,
-        draftLabel: l.draft,
-        onClose: _onClose,
-      ),
+    // Intercept the iOS swipe-back gesture when the user has unsaved
+    // content so they get the same discard prompt as the back-arrow tap.
+    // canPop: false blocks the pop; onPopInvokedWithResult routes through
+    // the existing discard dialog and pops only on confirm.
+    return PopScope(
+      canPop: !_hasContent,
+      onPopInvokedWithResult: (didPop, _) async {
+        if (didPop) return;
+        await _onClose();
+      },
+      child: Scaffold(
+        backgroundColor: c.bgPage,
+        resizeToAvoidBottomInset: true,
+        appBar: ReviewTopBar(
+          title: l.screenTitle,
+          draftLabel: l.draft,
+          onClose: _onClose,
+        ),
       bottomNavigationBar: PostButtonBar(
         enabled: _canPost,
         posting: _posting,
@@ -340,6 +350,7 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
             const SizedBox(height: 24),
           ],
         ),
+      ),
       ),
     );
   }

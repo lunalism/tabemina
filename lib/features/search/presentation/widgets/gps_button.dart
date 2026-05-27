@@ -78,16 +78,13 @@ class _GpsButtonState extends ConsumerState<GpsButton> {
           width: 44,
           height: 44,
           child: Center(
-            child: _busy
-                ? SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: c.textPrimary,
-                    ),
-                  )
-                : Icon(Icons.my_location, size: 22, color: c.textPrimary),
+            // Dimmed glyph during a fix attempt — Tabemina avoids in-line
+            // spinners. The button stays the same size so the layout
+            // doesn't twitch when we drop the opacity.
+            child: Opacity(
+              opacity: _busy ? 0.45 : 1.0,
+              child: Icon(Icons.my_location, size: 22, color: c.textPrimary),
+            ),
           ),
         ),
       ),

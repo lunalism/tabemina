@@ -52,15 +52,14 @@ final GoRouter appRouter = GoRouter(
         },
       ),
     ),
-    // Write-review modal. CupertinoPage with fullscreenDialog: true gives us
-    // the native iOS slide-up-from-bottom + swipe-down-to-dismiss behavior.
-    // CustomTransitionPage *kills* the iOS back gesture, which is why we
-    // can't reach for a manual SlideTransition here.
+    // Write-review push. Uses the standard iOS push (slide-from-right) so
+    // the user can dismiss with the left-edge swipe-back gesture. We avoid
+    // fullscreenDialog: true on purpose — its swipe-down dismiss collides
+    // with iOS Control Center / Notification Center on real devices.
     GoRoute(
       path: AppRoutes.writeReview,
       pageBuilder: (context, state) => CupertinoPage<void>(
         key: state.pageKey,
-        fullscreenDialog: true,
         child: WriteReviewScreen.fromExtra(state.extra),
       ),
     ),

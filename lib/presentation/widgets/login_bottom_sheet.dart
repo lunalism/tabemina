@@ -143,17 +143,10 @@ class _LoginBottomSheetState extends ConsumerState<LoginBottomSheet> {
                   color: c.textTertiary,
                 ),
               ),
-              if (_busy) ...[
-                const SizedBox(height: AppConstants.spaceMd),
-                SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: c.textSecondary,
-                  ),
-                ),
-              ],
+              // No in-line spinner — the disabled button color
+              // already reads as "working" while the OAuth round-trip
+              // is happening. Tabemina ships no CircularProgressIndicator
+              // outside of pull-to-refresh.
             ],
           ),
         ),

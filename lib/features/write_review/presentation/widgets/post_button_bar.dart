@@ -55,15 +55,6 @@ class PostButtonBar extends StatelessWidget {
                   ? Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: AppColors.onPrimary,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
                         Text(
                           postingLabel,
                           style: const TextStyle(

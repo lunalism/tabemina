@@ -63,7 +63,6 @@ class _SearchBarOverlayState extends ConsumerState<SearchBarOverlay> {
     final c = AppColors.of(context);
     final topInset = MediaQuery.of(context).padding.top;
     final lang = ref.watch(appLocaleProvider).languageCode;
-    final isLoading = ref.watch(searchResultsProvider).isLoading;
     final hasText = _controller.text.isNotEmpty;
 
     return Padding(
@@ -96,16 +95,11 @@ class _SearchBarOverlayState extends ConsumerState<SearchBarOverlay> {
           ),
           child: Row(
             children: [
-              SizedBox(
-                width: 18,
-                height: 18,
-                child: isLoading
-                    ? CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: c.textSecondary,
-                      )
-                    : Icon(Icons.search, size: 18, color: c.textSecondary),
-              ),
+              // Static search glyph in both states — the bottom sheet's
+              // skeleton list signals "loading", so the bar no longer
+              // needs its own spinner (Tabemina ships no in-line
+              // CircularProgressIndicators outside of pull-to-refresh).
+              Icon(Icons.search, size: 18, color: c.textSecondary),
               const SizedBox(width: AppConstants.spaceSm),
               Expanded(
                 child: TextField(

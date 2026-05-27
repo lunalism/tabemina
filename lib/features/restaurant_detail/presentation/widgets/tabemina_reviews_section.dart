@@ -8,6 +8,7 @@ import '../../../../domain/entities/review_entity.dart';
 import '../../../../features/write_review/domain/models/tag_definitions.dart';
 import '../../../../presentation/providers/review_providers.dart';
 import '../../../../shared/widgets/network_image_fade.dart';
+import '../../../../shared/widgets/shimmer_box.dart';
 
 /// "Tabemina Reviews" — first-party reviews stored in Firestore for the
 /// current place. Sits above the Google-reviews section on the detail page.
@@ -361,21 +362,46 @@ class _ErrorState extends StatelessWidget {
 class _LoadingState extends StatelessWidget {
   const _LoadingState();
 
+  static const _opacities = [1.0, 0.5];
+
   @override
   Widget build(BuildContext context) {
     final c = AppColors.of(context);
     return Column(
       children: [
-        for (int i = 0; i < 2; i++) ...[
-          Container(
-            margin: const EdgeInsets.only(bottom: AppConstants.spaceMd),
-            height: 92,
-            decoration: BoxDecoration(
-              color: c.bgSkeleton,
-              borderRadius: BorderRadius.circular(12),
+        for (int i = 0; i < _opacities.length; i++)
+          Opacity(
+            opacity: _opacities[i],
+            child: Container(
+              margin: const EdgeInsets.only(bottom: AppConstants.spaceMd),
+              padding: const EdgeInsets.all(AppConstants.spaceMd),
+              decoration: BoxDecoration(
+                color: c.bgCard,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: c.borderPrimary, width: 0.5),
+              ),
+              child: const Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      ShimmerCircle(size: 28),
+                      SizedBox(width: AppConstants.spaceSm),
+                      ShimmerBox(width: 100, height: 11),
+                      Spacer(),
+                      ShimmerBox(width: 50, height: 10),
+                    ],
+                  ),
+                  SizedBox(height: AppConstants.spaceSm),
+                  ShimmerBox(width: 60, height: 12),
+                  SizedBox(height: AppConstants.spaceSm),
+                  ShimmerBox(width: double.infinity, height: 11),
+                  SizedBox(height: 6),
+                  ShimmerBox(width: 220, height: 11),
+                ],
+              ),
             ),
           ),
-        ],
       ],
     );
   }

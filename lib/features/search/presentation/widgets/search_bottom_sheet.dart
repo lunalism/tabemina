@@ -5,6 +5,7 @@ import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/providers/app_locale_provider.dart';
 import '../../../../core/providers/location_providers.dart';
+import '../../../../shared/widgets/restaurant_row_skeleton.dart';
 import '../providers/search_providers.dart';
 import 'filter_chip_row.dart';
 import 'restaurant_list_item.dart';
@@ -215,17 +216,7 @@ class _LoadingRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final c = AppColors.of(context);
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: AppConstants.spaceLg),
-      child: Center(
-        child: SizedBox(
-          width: 20,
-          height: 20,
-          child: CircularProgressIndicator(strokeWidth: 2, color: c.primary),
-        ),
-      ),
-    );
+    return const RestaurantRowSkeletonList();
   }
 }
 

@@ -8,6 +8,7 @@ import '../../../../core/constants/app_constants.dart';
 import '../../../../core/providers/app_locale_provider.dart';
 import '../../../../core/providers/location_providers.dart';
 import '../../../../shared/widgets/network_image_fade.dart';
+import '../../../../shared/widgets/restaurant_row_skeleton.dart';
 import '../../../home/data/datasources/places_api_datasource.dart';
 import '../../../home/data/models/nearby_restaurant.dart';
 import '../../domain/models/review_draft.dart';
@@ -121,18 +122,9 @@ class _RestaurantSearchSelectState
               future: _resultsFuture,
               builder: (context, snapshot) {
                 if (snapshot.connectionState != ConnectionState.done) {
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 24),
-                    child: Center(
-                      child: SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: c.primary,
-                        ),
-                      ),
-                    ),
+                  return const Padding(
+                    padding: EdgeInsets.symmetric(vertical: AppConstants.spaceSm),
+                    child: RestaurantRowSkeletonList(),
                   );
                 }
                 if (snapshot.hasError) {

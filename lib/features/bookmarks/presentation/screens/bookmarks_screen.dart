@@ -5,6 +5,7 @@ import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/providers/app_locale_provider.dart';
 import '../../../../presentation/providers/bookmark_providers.dart';
+import '../../../../shared/widgets/restaurant_row_skeleton.dart';
 import '../bookmarks_labels.dart';
 import '../widgets/bookmark_card.dart';
 import '../widgets/bookmarks_empty_state.dart';
@@ -121,18 +122,9 @@ class _LoadingList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final c = AppColors.of(context);
-    return ListView.separated(
-      padding: const EdgeInsets.symmetric(horizontal: AppConstants.spaceLg),
-      itemCount: 4,
-      separatorBuilder: (_, _) => const SizedBox(height: AppConstants.spaceMd),
-      itemBuilder: (_, _) => Container(
-        height: 92,
-        decoration: BoxDecoration(
-          color: c.bgSkeleton,
-          borderRadius: BorderRadius.circular(10),
-        ),
-      ),
+    return const SingleChildScrollView(
+      physics: NeverScrollableScrollPhysics(),
+      child: RestaurantRowSkeletonList(),
     );
   }
 }

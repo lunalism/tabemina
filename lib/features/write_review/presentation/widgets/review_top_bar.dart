@@ -3,11 +3,13 @@ import 'package:flutter/material.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_constants.dart';
 
-/// Fixed top bar: X close / "Write review" / "Draft" link.
+/// Fixed top bar: back arrow / "Write review" / "Draft" link.
 ///
-/// The close button delegates the discard-confirmation decision to the
+/// The back button delegates the discard-confirmation decision to the
 /// parent so a draft check can live in the screen state. The "Draft" link
-/// is a stub until the persistence layer lands.
+/// is a stub until the persistence layer lands. We use the iOS-style chevron
+/// because write-review is now a push route (not a modal), and the back
+/// arrow matches the swipe-back gesture's mental model.
 class ReviewTopBar extends StatelessWidget implements PreferredSizeWidget {
   const ReviewTopBar({
     super.key,
@@ -43,7 +45,11 @@ class ReviewTopBar extends StatelessWidget implements PreferredSizeWidget {
             child: Row(
               children: [
                 IconButton(
-                  icon: Icon(Icons.close_rounded, size: 24, color: c.textSecondary),
+                  icon: Icon(
+                    Icons.arrow_back_ios_new_rounded,
+                    size: 20,
+                    color: c.textSecondary,
+                  ),
                   onPressed: onClose,
                 ),
                 Expanded(
