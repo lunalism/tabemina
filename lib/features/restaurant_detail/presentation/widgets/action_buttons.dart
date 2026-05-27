@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_constants.dart';
+import '../../../../shared/widgets/bookmark_pulse.dart';
 
 /// Four-up action row under the info header: Review / Save / Route / Share.
 ///
@@ -47,13 +48,16 @@ class ActionButtons extends StatelessWidget {
           ),
           const SizedBox(width: 8),
           Expanded(
-            child: _ActionButton(
-              icon: saved
-                  ? Icons.bookmark_rounded
-                  : Icons.bookmark_outline_rounded,
-              label: 'Save',
-              color: saved ? c.primary : c.textSecondary,
-              onTap: onSave,
+            child: BookmarkPulse(
+              saved: saved,
+              child: _ActionButton(
+                icon: saved
+                    ? Icons.bookmark_rounded
+                    : Icons.bookmark_outline_rounded,
+                label: 'Save',
+                color: saved ? c.primary : c.textSecondary,
+                onTap: onSave,
+              ),
             ),
           ),
           const SizedBox(width: 8),

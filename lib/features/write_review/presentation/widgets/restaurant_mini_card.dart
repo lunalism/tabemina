@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_constants.dart';
+import '../../../../shared/widgets/network_image_fade.dart';
 import '../../domain/models/review_draft.dart';
 
 /// Compact row showing the restaurant a review is being written for.
@@ -122,10 +123,9 @@ class _Thumbnail extends StatelessWidget {
         width: 44,
         height: 44,
         child: photoUrl != null && photoUrl!.isNotEmpty
-            ? Image.network(
-                photoUrl!,
-                fit: BoxFit.cover,
-                errorBuilder: (_, _, _) => _placeholder(c),
+            ? FadeInNetworkImage(
+                url: photoUrl!,
+                errorPlaceholder: _placeholder(c),
               )
             : _placeholder(c),
       ),

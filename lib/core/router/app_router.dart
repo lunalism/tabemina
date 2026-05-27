@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../features/bookmarks/presentation/screens/bookmarks_screen.dart';
@@ -52,53 +52,28 @@ final GoRouter appRouter = GoRouter(
         },
       ),
     ),
-    // Write-review modal — lives outside the tab shell so it slides up over
-    // the tab bar. Restaurant context comes through `extra` (may be null when
-    // the user opened from the tab bar without a pre-selected place).
+    // Write-review modal. CupertinoPage with fullscreenDialog: true gives us
+    // the native iOS slide-up-from-bottom + swipe-down-to-dismiss behavior.
+    // CustomTransitionPage *kills* the iOS back gesture, which is why we
+    // can't reach for a manual SlideTransition here.
     GoRoute(
       path: AppRoutes.writeReview,
-      pageBuilder: (context, state) {
-        return CustomTransitionPage<void>(
-          key: state.pageKey,
-          child: WriteReviewScreen.fromExtra(state.extra),
-          transitionDuration: const Duration(milliseconds: 280),
-          reverseTransitionDuration: const Duration(milliseconds: 220),
-          transitionsBuilder: (context, animation, secondaryAnimation, child) {
-            return SlideTransition(
-              position: Tween<Offset>(
-                begin: const Offset(0, 1),
-                end: Offset.zero,
-              ).animate(
-                CurvedAnimation(parent: animation, curve: Curves.easeOut),
-              ),
-              child: child,
-            );
-          },
-        );
-      },
+      pageBuilder: (context, state) => CupertinoPage<void>(
+        key: state.pageKey,
+        fullscreenDialog: true,
+        child: WriteReviewScreen.fromExtra(state.extra),
+      ),
     ),
-    // Restaurant detail lives outside the tab shell so its slide transition
-    // (and full-bleed hero) push over the tab bar.
+    // Restaurant detail. CupertinoPage gives the native iOS slide-from-right
+    // push and — critically — the interactive swipe-back gesture from the
+    // left edge. Material's default page route swallows that on iOS.
     GoRoute(
       path: '${AppRoutes.restaurantDetail}/:placeId',
       pageBuilder: (context, state) {
         final placeId = state.pathParameters['placeId']!;
-        return CustomTransitionPage<void>(
+        return CupertinoPage<void>(
           key: state.pageKey,
           child: RestaurantDetailScreen(placeId: placeId),
-          transitionDuration: const Duration(milliseconds: 260),
-          reverseTransitionDuration: const Duration(milliseconds: 220),
-          transitionsBuilder: (context, animation, secondaryAnimation, child) {
-            return SlideTransition(
-              position: Tween<Offset>(
-                begin: const Offset(1, 0),
-                end: Offset.zero,
-              ).animate(
-                CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
-              ),
-              child: child,
-            );
-          },
         );
       },
     ),

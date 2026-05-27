@@ -7,6 +7,7 @@ import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/providers/app_locale_provider.dart';
 import '../../../../core/providers/location_providers.dart';
+import '../../../../shared/widgets/network_image_fade.dart';
 import '../../../home/data/datasources/places_api_datasource.dart';
 import '../../../home/data/models/nearby_restaurant.dart';
 import '../../domain/models/review_draft.dart';
@@ -208,10 +209,9 @@ class _ResultRow extends StatelessWidget {
                 width: 40,
                 height: 40,
                 child: item.photoName != null
-                    ? Image.network(
-                        PlacesApiDatasource.photoUrl(item.photoName!),
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, _, _) => _ph(c),
+                    ? FadeInNetworkImage(
+                        url: PlacesApiDatasource.photoUrl(item.photoName!),
+                        errorPlaceholder: _ph(c),
                       )
                     : _ph(c),
               ),

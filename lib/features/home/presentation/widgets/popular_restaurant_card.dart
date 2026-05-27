@@ -4,8 +4,14 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/router/app_router.dart';
+import '../../../../shared/widgets/network_image_fade.dart';
 import '../../data/datasources/places_api_datasource.dart';
 import '../../data/models/nearby_restaurant.dart';
+
+/// Hero tag for restaurant photos. Shared across every card surface that
+/// links to the detail screen so the zoom-in is consistent regardless of
+/// entry point.
+String restaurantPhotoHeroTag(String placeId) => 'restaurant-photo-$placeId';
 
 /// One card in the "Popular near you" carousel.
 ///
@@ -45,7 +51,10 @@ class PopularRestaurantCard extends StatelessWidget {
             children: [
               Stack(
                 children: [
-                  _Photo(photoName: restaurant.photoName),
+                  Hero(
+                    tag: restaurantPhotoHeroTag(restaurant.id),
+                    child: _Photo(photoName: restaurant.photoName),
+                  ),
                   Positioned(
                     top: 6,
                     left: 6,
@@ -91,16 +100,11 @@ class _Photo extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = AppColors.of(context);
     if (photoName == null) return _placeholder(c);
-    return Image.network(
-      PlacesApiDatasource.photoUrl(photoName!),
+    return FadeInNetworkImage(
+      url: PlacesApiDatasource.photoUrl(photoName!),
       width: 150,
       height: 110,
-      fit: BoxFit.cover,
-      errorBuilder: (_, _, _) => _placeholder(c),
-      loadingBuilder: (context, child, progress) {
-        if (progress == null) return child;
-        return Container(width: 150, height: 110, color: c.bgSkeleton);
-      },
+      errorPlaceholder: _placeholder(c),
     );
   }
 

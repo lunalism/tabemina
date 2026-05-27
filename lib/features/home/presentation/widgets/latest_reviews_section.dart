@@ -10,6 +10,7 @@ import '../../../../domain/entities/review_entity.dart';
 import '../../../../features/restaurant_detail/presentation/widgets/tabemina_reviews_section.dart'
     show formatRelative;
 import '../../../../presentation/providers/review_providers.dart';
+import '../../../../shared/widgets/network_image_fade.dart';
 
 /// Home-feed "Latest reviews" — vertical stack of the 10 newest Tabemina
 /// reviews across all places. Falls back to a soft empty state until users
@@ -177,16 +178,10 @@ class _RealReviewCard extends StatelessWidget {
                     const SizedBox(height: AppConstants.spaceSm),
                     ClipRRect(
                       borderRadius: BorderRadius.circular(10),
-                      child: Image.network(
-                        review.photoUrls.first,
+                      child: FadeInNetworkImage(
+                        url: review.photoUrls.first,
                         width: 90,
                         height: 68,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, _, _) => Container(
-                          width: 90,
-                          height: 68,
-                          color: c.bgSkeleton,
-                        ),
                       ),
                     ),
                   ],

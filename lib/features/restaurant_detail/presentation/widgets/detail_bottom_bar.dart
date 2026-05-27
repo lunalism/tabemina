@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_constants.dart';
+import '../../../../shared/widgets/bookmark_pulse.dart';
 
 /// Sticky bottom action bar — primary "Write review" CTA plus square
 /// save/route buttons.
@@ -46,12 +47,15 @@ class DetailBottomBar extends StatelessWidget {
                 child: _PrimaryCta(onTap: onWriteReview),
               ),
               const SizedBox(width: 8),
-              _SquareButton(
-                icon: saved
-                    ? Icons.bookmark_rounded
-                    : Icons.bookmark_outline_rounded,
-                color: saved ? c.primary : c.textSecondary,
-                onTap: onSaveToggle,
+              BookmarkPulse(
+                saved: saved,
+                child: _SquareButton(
+                  icon: saved
+                      ? Icons.bookmark_rounded
+                      : Icons.bookmark_outline_rounded,
+                  color: saved ? c.primary : c.textSecondary,
+                  onTap: onSaveToggle,
+                ),
               ),
               const SizedBox(width: 8),
               _SquareButton(

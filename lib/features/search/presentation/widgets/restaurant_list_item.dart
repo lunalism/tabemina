@@ -5,8 +5,11 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/router/app_router.dart';
+import '../../../../shared/widgets/network_image_fade.dart';
 import '../../../home/data/datasources/places_api_datasource.dart';
 import '../../../home/data/models/nearby_restaurant.dart';
+import '../../../home/presentation/widgets/popular_restaurant_card.dart'
+    show restaurantPhotoHeroTag;
 
 /// One row in the Search bottom sheet — thumbnail, name, meta line, and a
 /// tap target that opens the restaurant detail screen.
@@ -41,7 +44,10 @@ class RestaurantListItem extends StatelessWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            _Thumbnail(photoName: restaurant.photoName),
+            Hero(
+              tag: restaurantPhotoHeroTag(restaurant.id),
+              child: _Thumbnail(photoName: restaurant.photoName),
+            ),
             const SizedBox(width: AppConstants.spaceMd),
             Expanded(
               child: Column(
@@ -89,10 +95,9 @@ class _Thumbnail extends StatelessWidget {
         width: 48,
         height: 48,
         child: photoName != null
-            ? Image.network(
-                PlacesApiDatasource.photoUrl(photoName!, maxHeightPx: 200),
-                fit: BoxFit.cover,
-                errorBuilder: (_, _, _) => _placeholder(c),
+            ? FadeInNetworkImage(
+                url: PlacesApiDatasource.photoUrl(photoName!, maxHeightPx: 200),
+                errorPlaceholder: _placeholder(c),
               )
             : _placeholder(c),
       ),

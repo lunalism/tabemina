@@ -7,6 +7,7 @@ import '../../../../core/providers/app_locale_provider.dart';
 import '../../../../domain/entities/review_entity.dart';
 import '../../../../features/write_review/domain/models/tag_definitions.dart';
 import '../../../../presentation/providers/review_providers.dart';
+import '../../../../shared/widgets/network_image_fade.dart';
 
 /// "Tabemina Reviews" — first-party reviews stored in Firestore for the
 /// current place. Sits above the Google-reviews section on the detail page.
@@ -203,12 +204,11 @@ class TabeminaReviewCard extends StatelessWidget {
                 separatorBuilder: (_, _) => const SizedBox(width: 8),
                 itemBuilder: (_, i) => ClipRRect(
                   borderRadius: BorderRadius.circular(8),
-                  child: Image.network(
-                    review.photoUrls[i],
+                  child: FadeInNetworkImage(
+                    url: review.photoUrls[i],
                     width: 72,
                     height: 72,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, _, _) => Container(
+                    errorPlaceholder: Container(
                       width: 72,
                       height: 72,
                       color: c.bgSkeleton,
