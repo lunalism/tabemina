@@ -3,18 +3,21 @@ import 'package:flutter/material.dart';
 import 'image_placeholder.dart';
 import 'shimmer_box.dart';
 
-/// `Image.network` with a built-in 200ms fade-in once the first frame
-/// resolves, so list scrolling doesn't show a hard pop-in.
+/// `Image.network` with a lightweight shimmer-while-loading and a 200ms
+/// fade-in once the first frame decodes.
 ///
-/// Loading pipeline (matches the rest of the app):
-/// - Before decode: warm-gray plate with camera glyph ([ImagePlaceholder]).
-/// - During load: [ShimmerBox] overlay on the same plate.
-/// - On error: [ImagePlaceholder] with `isError: true` (photo-off glyph).
-/// - On success: cross-fade from the placeholder to the decoded image.
+/// Loading pipeline:
+/// - While loading: a single [ShimmerBox] occupies the slot (no extra
+///   layers, no `Opacity`/`saveLayer` cost — that was the source of the
+///   list-scroll slowdown).
+/// - First frame ready: [AnimatedSwitcher] cross-fades shimmer → image
+///   over [fadeInDuration]; the shimmer (and its AnimationController) is
+///   removed from the tree once the fade completes.
+/// - On error: [ImagePlaceholder] with the photo-off glyph.
 ///
-/// `frameBuilder` is the framework-native way to detect "first frame
-/// available" without pulling in a third-party package (no
-/// `transparent_image` dep needed).
+/// Only one `Image.network` is created per photo. `frameBuilder` is the
+/// framework-native "first frame ready" hook, so there's no second decode
+/// for the placeholder.
 class FadeInNetworkImage extends StatelessWidget {
   const FadeInNetworkImage({
     super.key,
@@ -34,53 +37,16 @@ class FadeInNetworkImage extends StatelessWidget {
   final double? height;
   final BoxFit fit;
 
-  /// Override for the loading state. Defaults to [ImagePlaceholder] with
-  /// a shimmer overlay; pass your own widget for surfaces with bespoke
-  /// chrome (e.g. the hero gallery's dark background).
+  /// Override for the loading state. Defaults to a bare [ShimmerBox].
   final Widget? placeholder;
 
-  /// Override for the error state. Defaults to [ImagePlaceholder] with
-  /// the `image_not_supported` glyph at the same surface color.
+  /// Override for the error state. Defaults to [ImagePlaceholder] with the
+  /// `image_not_supported` glyph.
   final Widget? errorPlaceholder;
 
-  /// Border radius applied to the default placeholders. Ignored if a
-  /// custom [placeholder] / [errorPlaceholder] is provided.
   final double borderRadius;
-
-  /// Icon size for the default placeholders. The hero gallery uses 48px;
-  /// thumbnails 20–24px.
   final double iconSize;
-
   final Duration fadeInDuration;
-
-  Widget _defaultPlaceholder({required bool isError}) {
-    final base = ImagePlaceholder(
-      width: width,
-      height: height,
-      borderRadius: borderRadius,
-      iconSize: iconSize,
-      isError: isError,
-    );
-    if (isError) return base;
-    // Shimmer overlays the plate while we're actively loading — the icon
-    // shows through faintly so the slot still reads as an image.
-    return Stack(
-      fit: StackFit.passthrough,
-      children: [
-        base,
-        Positioned.fill(
-          child: Opacity(
-            opacity: 0.7,
-            child: ShimmerBox(
-              width: width,
-              height: height,
-              borderRadius: borderRadius,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -89,20 +55,35 @@ class FadeInNetworkImage extends StatelessWidget {
       width: width,
       height: height,
       fit: fit,
-      frameBuilder: (context, child, frame, wasSyncLoaded) {
-        if (wasSyncLoaded) return child;
+      frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
+        // Already in the image cache — paint immediately, no shimmer, no
+        // transition cost.
+        if (wasSynchronouslyLoaded) return child;
+        final loaded = frame != null;
         return AnimatedSwitcher(
           duration: fadeInDuration,
-          child: frame == null
-              ? (placeholder ?? _defaultPlaceholder(isError: false))
-              : KeyedSubtree(
+          child: loaded
+              ? KeyedSubtree(
                   key: const ValueKey('image-loaded'),
                   child: child,
-                ),
+                )
+              : (placeholder ??
+                  ShimmerBox(
+                    width: width,
+                    height: height,
+                    borderRadius: borderRadius,
+                  )),
         );
       },
       errorBuilder: (_, _, _) =>
-          errorPlaceholder ?? _defaultPlaceholder(isError: true),
+          errorPlaceholder ??
+          ImagePlaceholder(
+            width: width,
+            height: height,
+            borderRadius: borderRadius,
+            iconSize: iconSize,
+            isError: true,
+          ),
     );
   }
 }

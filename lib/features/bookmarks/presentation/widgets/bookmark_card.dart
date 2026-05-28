@@ -7,8 +7,6 @@ import '../../../../core/router/app_router.dart';
 import '../../../../domain/entities/bookmark_entity.dart';
 import '../../../../shared/widgets/network_image_fade.dart';
 import '../../../home/data/models/nearby_restaurant.dart' show PriceLevel;
-import '../../../home/presentation/widgets/popular_restaurant_card.dart'
-    show restaurantPhotoHeroTag;
 import '../bookmarks_labels.dart';
 
 /// One row in the Bookmarks list.
@@ -42,10 +40,7 @@ class BookmarkCard extends StatelessWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Hero(
-              tag: restaurantPhotoHeroTag(bookmark.placeId),
-              child: _Thumbnail(photoUrl: bookmark.placePhotoUrl),
-            ),
+            _Thumbnail(photoUrl: bookmark.placePhotoUrl),
             const SizedBox(width: AppConstants.spaceMd),
             Expanded(
               child: Column(

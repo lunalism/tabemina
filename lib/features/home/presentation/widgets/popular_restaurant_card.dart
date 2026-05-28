@@ -8,11 +8,6 @@ import '../../../../shared/widgets/network_image_fade.dart';
 import '../../data/datasources/places_api_datasource.dart';
 import '../../data/models/nearby_restaurant.dart';
 
-/// Hero tag for restaurant photos. Shared across every card surface that
-/// links to the detail screen so the zoom-in is consistent regardless of
-/// entry point.
-String restaurantPhotoHeroTag(String placeId) => 'restaurant-photo-$placeId';
-
 /// One card in the "Popular near you" carousel.
 ///
 /// Width is fixed (150px) so the parent [ListView] can scroll smoothly without
@@ -51,10 +46,7 @@ class PopularRestaurantCard extends StatelessWidget {
             children: [
               Stack(
                 children: [
-                  Hero(
-                    tag: restaurantPhotoHeroTag(restaurant.id),
-                    child: _Photo(photoName: restaurant.photoName),
-                  ),
+                  _Photo(photoName: restaurant.photoName),
                   Positioned(
                     top: 6,
                     left: 6,

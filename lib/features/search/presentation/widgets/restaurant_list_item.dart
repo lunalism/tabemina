@@ -8,8 +8,6 @@ import '../../../../core/router/app_router.dart';
 import '../../../../shared/widgets/network_image_fade.dart';
 import '../../../home/data/datasources/places_api_datasource.dart';
 import '../../../home/data/models/nearby_restaurant.dart';
-import '../../../home/presentation/widgets/popular_restaurant_card.dart'
-    show restaurantPhotoHeroTag;
 
 /// One row in the Search bottom sheet — thumbnail, name, meta line, and a
 /// tap target that opens the restaurant detail screen.
@@ -44,10 +42,7 @@ class RestaurantListItem extends StatelessWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            Hero(
-              tag: restaurantPhotoHeroTag(restaurant.id),
-              child: _Thumbnail(photoName: restaurant.photoName),
-            ),
+            _Thumbnail(photoName: restaurant.photoName),
             const SizedBox(width: AppConstants.spaceMd),
             Expanded(
               child: Column(

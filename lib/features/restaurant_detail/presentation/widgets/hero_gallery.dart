@@ -15,14 +15,10 @@ import '../../data/datasources/place_detail_remote_datasource.dart';
 class HeroGallery extends StatefulWidget {
   const HeroGallery({
     super.key,
-    required this.placeId,
     required this.photoNames,
     required this.onBack,
   });
 
-  /// Used as the `Hero` tag on the first photo so the card→detail zoom
-  /// animation has a counterpart to land on.
-  final String placeId;
   final List<String> photoNames;
   final VoidCallback onBack;
 
@@ -57,25 +53,10 @@ class _HeroGalleryState extends State<HeroGallery> {
             controller: _controller,
             itemCount: photos.length,
             onPageChanged: (i) => setState(() => _page = i),
-            itemBuilder: (_, i) {
-              // Only the first photo carries the Hero tag — it's the one
-              // the originating card animates into. Subsequent pages are
-              // plain (a hero tag conflict would crash the page swipe).
-              final image = _GalleryImage(photoName: photos[i]);
-              if (i == 0) {
-                return Hero(
-                  tag: 'restaurant-photo-${widget.placeId}',
-                  child: image,
-                );
-              }
-              return image;
-            },
+            itemBuilder: (_, i) => _GalleryImage(photoName: photos[i]),
           )
         else
-          Hero(
-            tag: 'restaurant-photo-${widget.placeId}',
-            child: const _Placeholder(),
-          ),
+          const _Placeholder(),
 
         // Top gradient overlay so the back button + status bar icons stay
         // readable on bright photos.
@@ -153,8 +134,14 @@ class _GalleryImage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // width/height infinity forces the photo to fill the full-bleed page
+    // regardless of its own aspect ratio — without this, a portrait photo
+    // would size to its intrinsic (narrower) width under the PageView's
+    // loose child constraints and appear letterboxed.
     return FadeInNetworkImage(
       url: PlaceDetailRemoteDatasource.photoUrl(photoName, maxHeightPx: 1000),
+      width: double.infinity,
+      height: double.infinity,
       placeholder: Container(color: const Color(0xFF1A1A18)),
       errorPlaceholder: const _Placeholder(),
     );

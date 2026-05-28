@@ -114,7 +114,6 @@ class _DetailContent extends StatelessWidget {
           child: SizedBox(
             height: expandedHeight,
             child: HeroGallery(
-              placeId: detail.id,
               photoNames: detail.photoNames,
               onBack: () => context.pop(),
             ),
