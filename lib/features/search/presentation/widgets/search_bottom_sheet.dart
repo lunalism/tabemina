@@ -5,6 +5,8 @@ import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/providers/app_locale_provider.dart';
 import '../../../../core/providers/location_providers.dart';
+import '../../../../shared/widgets/app_error_kind.dart';
+import '../../../../shared/widgets/app_state_labels.dart';
 import '../../../../shared/widgets/restaurant_row_skeleton.dart';
 import '../providers/search_providers.dart';
 import 'filter_chip_row.dart';
@@ -90,11 +92,24 @@ class SearchBottomSheet extends ConsumerWidget {
                 const SizedBox(height: AppConstants.spaceXs),
                 ...asyncResults.when(
                   loading: () => [const _LoadingRow()],
-                  error: (e, _) => [_ErrorRow(message: e.toString())],
+                  error: (e, _) => [
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                        vertical: AppConstants.spaceLg,
+                      ),
+                      child: errorStateView(
+                        context,
+                        error: e,
+                        labels: AppStateLabels.of(lang),
+                        onRetry: () => ref.invalidate(searchResultsProvider),
+                        compact: true,
+                      ),
+                    ),
+                  ],
                   data: (items) {
                     if (items.isEmpty) {
                       if (hasQuery) {
-                        return [SearchEmptyState(labels: labels)];
+                        return [const SearchEmptyState()];
                       }
                       return [const _NearbyEmptyRow()];
                     }
@@ -217,31 +232,6 @@ class _LoadingRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const RestaurantRowSkeletonList();
-  }
-}
-
-class _ErrorRow extends StatelessWidget {
-  const _ErrorRow({required this.message});
-
-  final String message;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = AppColors.of(context);
-    return Padding(
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppConstants.spaceLg,
-        vertical: AppConstants.spaceLg,
-      ),
-      child: Text(
-        message,
-        style: TextStyle(
-          fontFamily: 'Pretendard',
-          fontSize: 12,
-          color: c.errorText,
-        ),
-      ),
-    );
   }
 }
 

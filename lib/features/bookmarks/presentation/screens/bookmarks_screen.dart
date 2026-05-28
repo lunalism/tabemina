@@ -5,13 +5,11 @@ import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/providers/app_locale_provider.dart';
 import '../../../../presentation/providers/bookmark_providers.dart';
-import '../../../../shared/widgets/restaurant_row_skeleton.dart';
 import '../bookmarks_labels.dart';
-import '../widgets/bookmark_card.dart';
-import '../widgets/bookmarks_empty_state.dart';
+import '../widgets/bookmarks_list_view.dart';
 
-/// Bookmarks tab — header + count, then either the empty state or a vertical
-/// list of saved restaurants.
+/// Bookmarks tab — header + count, then the shared [BookmarksListView] body
+/// (loading / error / empty / list).
 ///
 /// Source switches between Firestore (signed-in) and SharedPreferences
 /// (guest) automatically via [bookmarkRepositoryProvider].
@@ -31,33 +29,14 @@ class BookmarksScreen extends ConsumerWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            asyncBookmarks.when(
-              loading: () => _Header(count: 0, labels: labels),
-              error: (_, _) => _Header(count: 0, labels: labels),
-              data: (list) => _Header(count: list.length, labels: labels),
-            ),
-            Expanded(
-              child: asyncBookmarks.when(
-                loading: () => const _LoadingList(),
-                error: (_, _) => BookmarksEmptyState(labels: labels),
-                data: (bookmarks) {
-                  if (bookmarks.isEmpty) {
-                    return BookmarksEmptyState(labels: labels);
-                  }
-                  return ListView.builder(
-                    padding: EdgeInsets.zero,
-                    itemCount: bookmarks.length,
-                    itemBuilder: (_, i) => BookmarkCard(
-                      bookmark: bookmarks[i],
-                      labels: labels,
-                      onRemove: () => ref
-                          .read(bookmarkRepositoryProvider)
-                          .removeBookmark(bookmarks[i].placeId),
-                    ),
-                  );
-                },
+            _Header(
+              count: asyncBookmarks.maybeWhen(
+                data: (list) => list.length,
+                orElse: () => 0,
               ),
+              labels: labels,
             ),
+            const Expanded(child: BookmarksListView()),
           ],
         ),
       ),
@@ -113,18 +92,6 @@ class _Header extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-}
-
-class _LoadingList extends StatelessWidget {
-  const _LoadingList();
-
-  @override
-  Widget build(BuildContext context) {
-    return const SingleChildScrollView(
-      physics: NeverScrollableScrollPhysics(),
-      child: RestaurantRowSkeletonList(),
     );
   }
 }

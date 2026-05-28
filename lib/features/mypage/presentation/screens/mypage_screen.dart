@@ -1,93 +1,308 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/providers/app_locale_provider.dart';
 import '../../../../core/providers/app_theme_mode_provider.dart';
+import '../../../../core/router/app_router.dart';
 import '../../../../domain/entities/user_entity.dart';
 import '../../../../presentation/providers/auth_providers.dart';
+import '../../../../presentation/providers/bookmark_providers.dart';
+import '../../../../presentation/providers/review_providers.dart';
 import '../../../../presentation/widgets/login_bottom_sheet.dart';
+import '../../../../shared/widgets/app_error_kind.dart';
+import '../../../../shared/widgets/app_state_labels.dart';
+import '../../../../shared/widgets/shimmer_box.dart';
 import '../../../../shared/widgets/tabemina_snackbar.dart';
+import '../../../bookmarks/presentation/widgets/bookmarks_list_view.dart';
+import '../mypage_labels.dart';
 import '../widgets/appearance_selector_modal.dart';
 import '../widgets/language_selector_modal.dart';
+import '../widgets/review_photo_grid.dart';
+import '../widgets/reviews_empty_state.dart';
+import '../widgets/stats_row.dart';
+import '../widgets/visited_empty_state.dart';
 
-/// My Page — profile header (signed-in or guest CTA) + system settings.
+/// My Page — profile header + stats + tabbed content (reviews / saved /
+/// visited) + system settings.
 ///
-/// Language and appearance stay visible regardless of auth state so guest
-/// users can still personalize the app.
-class MyPageScreen extends ConsumerWidget {
+/// The whole page is a single scroll view; the reviews grid and saved list
+/// shrink-wrap and delegate scrolling to it, so there's no nested-scroll
+/// conflict. Stats + tabs only render for a signed-in user (they're all
+/// account-scoped); guests see the sign-in prompt + settings.
+class MyPageScreen extends ConsumerStatefulWidget {
   const MyPageScreen({super.key});
 
+  @override
+  ConsumerState<MyPageScreen> createState() => _MyPageScreenState();
+}
+
+class _MyPageScreenState extends ConsumerState<MyPageScreen> {
   static const String _appVersion = '1.0.0';
 
+  int _tab = 0;
+
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final c = AppColors.of(context);
     final locale = ref.watch(appLocaleProvider);
     final themeMode = ref.watch(appThemeModeProvider);
     final user = ref.watch(currentUserProvider);
     final lang = locale.languageCode;
-    final labels = _MyPageLabels.of(lang);
+    final labels = MyPageLabels.of(lang);
 
     return Scaffold(
       backgroundColor: c.bgPage,
       body: SafeArea(
-        child: ListView(
+        child: SingleChildScrollView(
           padding: const EdgeInsets.only(top: AppConstants.spaceXl),
-          children: [
-            if (user != null)
-              _SignedInHeader(user: user, labels: labels)
-            else
-              _GuestSection(labels: labels),
-            const SizedBox(height: AppConstants.spaceXl),
-            Divider(height: 1, thickness: 0.5, color: c.borderPrimary),
-            _SectionHeader(label: labels.settingsHeader),
-            _SettingRow(
-              icon: Icons.language_rounded,
-              label: labels.languageLabel,
-              trailing: localeDisplayName(locale),
-              onTap: () => LanguageSelectorModal.show(context),
-            ),
-            _SettingRow(
-              icon: Icons.brightness_6_outlined,
-              label: labels.appearanceLabel,
-              trailing: themeModeDisplayName(themeMode, lang),
-              onTap: () => AppearanceSelectorModal.show(context),
-            ),
-            _SettingRow(
-              icon: Icons.info_outline_rounded,
-              label: labels.versionLabel,
-              trailing: _appVersion,
-              onTap: null,
-            ),
-            if (user != null) ...[
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (user != null) ...[
+                _SignedInHeader(user: user, labels: labels),
+                const SizedBox(height: AppConstants.spaceXl),
+                _StatsRowConnected(labels: labels),
+                const SizedBox(height: AppConstants.spaceXl),
+                _TabBar(
+                  labels: labels,
+                  selected: _tab,
+                  onChanged: (i) => setState(() => _tab = i),
+                ),
+                _TabContent(tab: _tab, labels: labels),
+              ] else
+                _GuestSection(labels: labels),
               const SizedBox(height: AppConstants.spaceLg),
-              Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: AppConstants.spaceLg,
-                ),
-                child: _SignOutButton(
-                  label: labels.signOut,
-                  onTap: () => _signOut(context, ref, labels),
-                ),
+              Divider(height: 1, thickness: 0.5, color: c.borderPrimary),
+              _SectionHeader(label: labels.settingsHeader),
+              _SettingRow(
+                icon: Icons.language_rounded,
+                label: labels.languageLabel,
+                trailing: localeDisplayName(locale),
+                onTap: () => LanguageSelectorModal.show(context),
               ),
+              _SettingRow(
+                icon: Icons.brightness_6_outlined,
+                label: labels.appearanceLabel,
+                trailing: themeModeDisplayName(themeMode, lang),
+                onTap: () => AppearanceSelectorModal.show(context),
+              ),
+              _SettingRow(
+                icon: Icons.info_outline_rounded,
+                label: labels.versionLabel,
+                trailing: _appVersion,
+                onTap: null,
+              ),
+              if (user != null) ...[
+                const SizedBox(height: AppConstants.spaceLg),
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppConstants.spaceLg,
+                  ),
+                  child: _SignOutButton(
+                    label: labels.signOut,
+                    onTap: () => _signOut(context, labels),
+                  ),
+                ),
+              ],
               const SizedBox(height: AppConstants.spaceXl),
             ],
-          ],
+          ),
         ),
       ),
     );
   }
 
-  Future<void> _signOut(
-    BuildContext context,
-    WidgetRef ref,
-    _MyPageLabels labels,
-  ) async {
+  Future<void> _signOut(BuildContext context, MyPageLabels labels) async {
     await ref.read(authRepositoryProvider).signOut();
     if (!context.mounted) return;
     showTabeminaSnackbar(context, message: labels.signedOutSnack);
+  }
+}
+
+/// Watches the two count-bearing providers and renders the stats row.
+class _StatsRowConnected extends ConsumerWidget {
+  const _StatsRowConnected({required this.labels});
+
+  final MyPageLabels labels;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final reviews = ref.watch(userReviewsProvider).maybeWhen(
+          data: (list) => list.length,
+          orElse: () => 0,
+        );
+    final saved = ref.watch(bookmarksProvider).maybeWhen(
+          data: (list) => list.length,
+          orElse: () => 0,
+        );
+    return StatsRow(
+      labels: labels,
+      reviews: reviews,
+      saved: saved,
+      visited: 0,
+      helpful: 0,
+    );
+  }
+}
+
+class _TabBar extends StatelessWidget {
+  const _TabBar({
+    required this.labels,
+    required this.selected,
+    required this.onChanged,
+  });
+
+  final MyPageLabels labels;
+  final int selected;
+  final ValueChanged<int> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AppColors.of(context);
+    final tabs = [labels.myReviewsTab, labels.savedTab, labels.visitedTab];
+    return Container(
+      decoration: BoxDecoration(
+        border: Border(
+          bottom: BorderSide(color: c.borderPrimary, width: 0.5),
+        ),
+      ),
+      child: Row(
+        children: [
+          for (int i = 0; i < tabs.length; i++)
+            Expanded(
+              child: _Tab(
+                label: tabs[i],
+                active: i == selected,
+                onTap: () => onChanged(i),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _Tab extends StatelessWidget {
+  const _Tab({required this.label, required this.active, required this.onTap});
+
+  final String label;
+  final bool active;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AppColors.of(context);
+    return InkWell(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: AppConstants.spaceMd),
+        decoration: BoxDecoration(
+          border: Border(
+            bottom: BorderSide(
+              color: active ? c.primary : Colors.transparent,
+              width: 2,
+            ),
+          ),
+        ),
+        alignment: Alignment.center,
+        child: Text(
+          label,
+          style: TextStyle(
+            fontFamily: 'Pretendard',
+            fontSize: 13,
+            fontWeight: FontWeight.w500,
+            color: active ? c.primary : c.textSecondary,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _TabContent extends ConsumerWidget {
+  const _TabContent({required this.tab, required this.labels});
+
+  final int tab;
+  final MyPageLabels labels;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    switch (tab) {
+      case 1:
+        return const Padding(
+          padding: EdgeInsets.only(top: AppConstants.spaceSm),
+          child: BookmarksListView(shrinkWrap: true),
+        );
+      case 2:
+        return VisitedEmptyState(labels: labels);
+      case 0:
+      default:
+        return _MyReviewsTab(labels: labels);
+    }
+  }
+}
+
+class _MyReviewsTab extends ConsumerWidget {
+  const _MyReviewsTab({required this.labels});
+
+  final MyPageLabels labels;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final lang = ref.watch(appLocaleProvider).languageCode;
+    final async = ref.watch(userReviewsProvider);
+    return async.when(
+      loading: () => const Padding(
+        padding: EdgeInsets.only(top: 2),
+        child: _GridSkeleton(),
+      ),
+      error: (e, _) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: AppConstants.spaceXl),
+        child: errorStateView(
+          context,
+          error: e,
+          labels: AppStateLabels.of(lang),
+          onRetry: () => ref.invalidate(userReviewsProvider),
+          compact: true,
+        ),
+      ),
+      data: (reviews) {
+        if (reviews.isEmpty) {
+          return ReviewsEmptyState(
+            labels: labels,
+            onWriteReview: () => context.push(AppRoutes.writeReview),
+          );
+        }
+        return Padding(
+          padding: const EdgeInsets.only(top: 2),
+          child: ReviewPhotoGrid(reviews: reviews),
+        );
+      },
+    );
+  }
+}
+
+class _GridSkeleton extends StatelessWidget {
+  const _GridSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      padding: EdgeInsets.zero,
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 3,
+        crossAxisSpacing: 2,
+        mainAxisSpacing: 2,
+        childAspectRatio: 1,
+      ),
+      itemCount: 6,
+      itemBuilder: (_, _) => const ShimmerBox(),
+    );
   }
 }
 
@@ -95,7 +310,7 @@ class _SignedInHeader extends StatelessWidget {
   const _SignedInHeader({required this.user, required this.labels});
 
   final UserEntity user;
-  final _MyPageLabels labels;
+  final MyPageLabels labels;
 
   @override
   Widget build(BuildContext context) {
@@ -150,6 +365,18 @@ class _SignedInHeader extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                   ),
                 ],
+                const SizedBox(height: 4),
+                // Non-functional for now — placeholder for the v2 profile
+                // editor. Rendered in coral so it reads as an action.
+                Text(
+                  labels.editProfile,
+                  style: TextStyle(
+                    fontFamily: 'Pretendard',
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                    color: c.primary,
+                  ),
+                ),
               ],
             ),
           ),
@@ -168,13 +395,13 @@ class _SignedInHeader extends StatelessWidget {
   }
 }
 
-class _GuestSection extends ConsumerWidget {
+class _GuestSection extends StatelessWidget {
   const _GuestSection({required this.labels});
 
-  final _MyPageLabels labels;
+  final MyPageLabels labels;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final c = AppColors.of(context);
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: AppConstants.spaceLg),
@@ -388,76 +615,5 @@ class _SettingRow extends StatelessWidget {
         ),
       ),
     );
-  }
-}
-
-class _MyPageLabels {
-  const _MyPageLabels({
-    required this.guestTitle,
-    required this.guestSubtitle,
-    required this.signIn,
-    required this.signOut,
-    required this.signedOutSnack,
-    required this.fallbackName,
-    required this.settingsHeader,
-    required this.languageLabel,
-    required this.appearanceLabel,
-    required this.versionLabel,
-  });
-
-  final String guestTitle;
-  final String guestSubtitle;
-  final String signIn;
-  final String signOut;
-  final String signedOutSnack;
-  final String fallbackName;
-  final String settingsHeader;
-  final String languageLabel;
-  final String appearanceLabel;
-  final String versionLabel;
-
-  static _MyPageLabels of(String lang) {
-    switch (lang) {
-      case 'ja':
-        return const _MyPageLabels(
-          guestTitle: 'ゲストユーザー',
-          guestSubtitle: 'プロフィールにアクセスするにはログインしてください',
-          signIn: 'ログイン',
-          signOut: 'ログアウト',
-          signedOutSnack: 'ログアウトしました',
-          fallbackName: 'Tabemina ユーザー',
-          settingsHeader: '設定',
-          languageLabel: '言語',
-          appearanceLabel: 'テーマ',
-          versionLabel: 'バージョン',
-        );
-      case 'ko':
-        return const _MyPageLabels(
-          guestTitle: '게스트 사용자',
-          guestSubtitle: '프로필에 접근하려면 로그인하세요',
-          signIn: '로그인',
-          signOut: '로그아웃',
-          signedOutSnack: '로그아웃했습니다',
-          fallbackName: 'Tabemina 사용자',
-          settingsHeader: '설정',
-          languageLabel: '언어',
-          appearanceLabel: '테마',
-          versionLabel: '버전',
-        );
-      case 'en':
-      default:
-        return const _MyPageLabels(
-          guestTitle: 'Guest User',
-          guestSubtitle: 'Sign in to access your profile',
-          signIn: 'Sign in',
-          signOut: 'Sign out',
-          signedOutSnack: 'Signed out',
-          fallbackName: 'Tabemina user',
-          settingsHeader: 'SETTINGS',
-          languageLabel: 'Language',
-          appearanceLabel: 'Appearance',
-          versionLabel: 'Version',
-        );
-    }
   }
 }

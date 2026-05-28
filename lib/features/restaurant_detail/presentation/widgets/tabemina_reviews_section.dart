@@ -7,15 +7,26 @@ import '../../../../core/providers/app_locale_provider.dart';
 import '../../../../domain/entities/review_entity.dart';
 import '../../../../features/write_review/domain/models/tag_definitions.dart';
 import '../../../../presentation/providers/review_providers.dart';
+import '../../../../shared/widgets/app_error_kind.dart';
+import '../../../../shared/widgets/app_state_labels.dart';
+import '../../../../shared/widgets/empty_state_view.dart';
 import '../../../../shared/widgets/network_image_fade.dart';
 import '../../../../shared/widgets/shimmer_box.dart';
 
 /// "Tabemina Reviews" — first-party reviews stored in Firestore for the
 /// current place. Sits above the Google-reviews section on the detail page.
 class TabeminaReviewsSection extends ConsumerWidget {
-  const TabeminaReviewsSection({super.key, required this.placeId});
+  const TabeminaReviewsSection({
+    super.key,
+    required this.placeId,
+    required this.onWriteReview,
+  });
 
   final String placeId;
+
+  /// Fired by the empty-state CTA — wired by the detail screen to the same
+  /// auth-gated write-review flow as the action row / bottom bar.
+  final VoidCallback onWriteReview;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -79,10 +90,25 @@ class TabeminaReviewsSection extends ConsumerWidget {
             ),
             child: async.when(
               loading: () => const _LoadingState(),
-              error: (_, _) => _ErrorState(message: labels.errorMessage),
+              error: (e, _) => errorStateView(
+                context,
+                error: e,
+                labels: AppStateLabels.of(lang),
+                onRetry: () => ref.invalidate(placeReviewsProvider(placeId)),
+                compact: true,
+              ),
               data: (reviews) {
                 if (reviews.isEmpty) {
-                  return _EmptyState(message: labels.emptyMessage);
+                  final s = AppStateLabels.of(lang);
+                  return EmptyStateView(
+                    icon: Icons.chat_bubble_outline_rounded,
+                    iconCircleColor: EmptyStateView.coralCircle(context),
+                    title: s.emptyDetailReviewsTitle,
+                    description: s.emptyDetailReviewsDescription,
+                    buttonText: s.emptyDetailReviewsCta,
+                    onButtonPressed: onWriteReview,
+                    compact: true,
+                  );
                 }
                 return Column(
                   children: [
@@ -294,71 +320,6 @@ class _TagChip extends StatelessWidget {
   }
 }
 
-class _EmptyState extends StatelessWidget {
-  const _EmptyState({required this.message});
-
-  final String message;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = AppColors.of(context);
-    return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppConstants.spaceLg,
-        vertical: AppConstants.spaceXl,
-      ),
-      decoration: BoxDecoration(
-        color: c.bgCard,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: c.borderPrimary, width: 0.5),
-      ),
-      child: Row(
-        children: [
-          Icon(
-            Icons.rate_review_outlined,
-            size: 22,
-            color: c.textTertiary,
-          ),
-          const SizedBox(width: AppConstants.spaceMd),
-          Expanded(
-            child: Text(
-              message,
-              style: TextStyle(
-                fontFamily: 'Pretendard',
-                fontSize: 13,
-                color: c.textSecondary,
-                height: 1.4,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ErrorState extends StatelessWidget {
-  const _ErrorState({required this.message});
-
-  final String message;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = AppColors.of(context);
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: AppConstants.spaceMd),
-      child: Text(
-        message,
-        style: TextStyle(
-          fontFamily: 'Pretendard',
-          fontSize: 13,
-          color: c.textSecondary,
-        ),
-      ),
-    );
-  }
-}
-
 class _LoadingState extends StatelessWidget {
   const _LoadingState();
 
@@ -489,37 +450,19 @@ String formatRelative(DateTime when, String lang) {
 }
 
 class _Labels {
-  const _Labels._({
-    required this.heading,
-    required this.emptyMessage,
-    required this.errorMessage,
-  });
+  const _Labels._({required this.heading});
 
   final String heading;
-  final String emptyMessage;
-  final String errorMessage;
 
   static _Labels of(String lang) {
     switch (lang) {
       case 'ja':
-        return const _Labels._(
-          heading: 'Tabeminaレビュー',
-          emptyMessage: 'まだレビューはありません。最初のレビューを書いてみよう!',
-          errorMessage: 'レビューを読み込めませんでした。',
-        );
+        return const _Labels._(heading: 'Tabeminaレビュー');
       case 'ko':
-        return const _Labels._(
-          heading: 'Tabemina 리뷰',
-          emptyMessage: '아직 리뷰가 없습니다. 첫 번째 리뷰를 작성해보세요!',
-          errorMessage: '리뷰를 불러올 수 없습니다.',
-        );
+        return const _Labels._(heading: 'Tabemina 리뷰');
       case 'en':
       default:
-        return const _Labels._(
-          heading: 'Tabemina Reviews',
-          emptyMessage: 'No reviews yet. Be the first to review!',
-          errorMessage: "Couldn't load reviews.",
-        );
+        return const _Labels._(heading: 'Tabemina Reviews');
     }
   }
 }

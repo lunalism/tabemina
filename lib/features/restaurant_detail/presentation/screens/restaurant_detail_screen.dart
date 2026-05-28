@@ -10,6 +10,8 @@ import '../../../../core/router/app_router.dart';
 import '../../../../domain/entities/bookmark_entity.dart';
 import '../../../../presentation/providers/bookmark_providers.dart';
 import '../../../../presentation/widgets/auth_gate.dart';
+import '../../../../shared/widgets/app_error_kind.dart';
+import '../../../../shared/widgets/app_state_labels.dart';
 import '../../../../shared/widgets/shimmer_box.dart';
 import '../../../../shared/widgets/tabemina_snackbar.dart';
 import '../../../bookmarks/presentation/bookmarks_labels.dart';
@@ -71,7 +73,8 @@ class RestaurantDetailScreen extends ConsumerWidget {
         loading: () => const _LoadingScaffold(
           expandedHeight: _expandedHeroHeight,
         ),
-        error: (_, _) => _ErrorView(
+        error: (e, _) => _ErrorView(
+          error: e,
           onRetry: () => ref.invalidate(placeDetailProvider(placeId)),
         ),
         data: (detail) => _DetailContent(
@@ -146,7 +149,10 @@ class _DetailContent extends StatelessWidget {
             ),
           ),
         SliverToBoxAdapter(
-          child: TabeminaReviewsSection(placeId: detail.id),
+          child: TabeminaReviewsSection(
+            placeId: detail.id,
+            onWriteReview: onWriteReview,
+          ),
         ),
         const SliverToBoxAdapter(child: _ReviewsSection()),
         const SliverToBoxAdapter(child: SizedBox(height: 100)),
@@ -402,14 +408,15 @@ class _ReviewSkeletonCard extends StatelessWidget {
   }
 }
 
-class _ErrorView extends StatelessWidget {
-  const _ErrorView({required this.onRetry});
+class _ErrorView extends ConsumerWidget {
+  const _ErrorView({required this.error, required this.onRetry});
 
+  final Object error;
   final VoidCallback onRetry;
 
   @override
-  Widget build(BuildContext context) {
-    final c = AppColors.of(context);
+  Widget build(BuildContext context, WidgetRef ref) {
+    final lang = ref.watch(appLocaleProvider).languageCode;
     return SafeArea(
       child: Stack(
         children: [
@@ -419,49 +426,11 @@ class _ErrorView extends StatelessWidget {
             child: HeroBackButton(onTap: () => context.pop()),
           ),
           Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  Icons.error_outline_rounded,
-                  size: 48,
-                  color: c.textTertiary,
-                ),
-                const SizedBox(height: AppConstants.spaceMd),
-                Text(
-                  "Couldn't load restaurant details",
-                  style: TextStyle(
-                    fontFamily: 'Pretendard',
-                    fontSize: 14,
-                    color: c.textSecondary,
-                  ),
-                ),
-                const SizedBox(height: AppConstants.spaceMd),
-                OutlinedButton(
-                  onPressed: onRetry,
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: c.primary,
-                    side: BorderSide(color: c.primary),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 20,
-                      vertical: 6,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(
-                        AppConstants.radiusFull,
-                      ),
-                    ),
-                  ),
-                  child: const Text(
-                    'Retry',
-                    style: TextStyle(
-                      fontFamily: 'Pretendard',
-                      fontSize: 13,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ),
-              ],
+            child: errorStateView(
+              context,
+              error: error,
+              labels: AppStateLabels.of(lang),
+              onRetry: onRetry,
             ),
           ),
         ],
