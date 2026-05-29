@@ -8,10 +8,14 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/providers/app_locale_provider.dart';
+import '../../../../domain/entities/review_entity.dart';
 import '../../../../domain/repositories/review_repository.dart';
+import '../../../../core/constants/app_constants.dart';
 import '../../../../presentation/providers/auth_providers.dart';
 import '../../../../presentation/providers/review_providers.dart';
+import '../../../../shared/widgets/cooldown_labels.dart';
 import '../../../../shared/widgets/tabemina_snackbar.dart';
+import '../../data/services/photo_upload_manager.dart';
 import '../../domain/models/review_draft.dart';
 import '../../domain/models/tag_definitions.dart';
 import '../widgets/anonymous_toggle.dart';
@@ -33,9 +37,18 @@ import '../widgets/tag_section.dart';
 /// promoting it to a global provider. The screen accepts an optional
 /// `initialRestaurant`; if absent, it boots in the in-screen search step.
 class WriteReviewScreen extends ConsumerStatefulWidget {
-  const WriteReviewScreen({super.key, this.initialRestaurant});
+  const WriteReviewScreen({
+    super.key,
+    this.initialRestaurant,
+    this.existingReview,
+  });
 
   final ReviewRestaurant? initialRestaurant;
+
+  /// When present, the screen runs in edit mode: the form is prefilled from
+  /// this review, the restaurant is locked, and submit calls
+  /// `updateReview` instead of `submitReview`.
+  final ReviewEntity? existingReview;
 
   /// Build the screen from the `extra` map handed in by GoRouter. The map
   /// shape matches the launch sites in detail/tab navigation.
@@ -58,6 +71,11 @@ class WriteReviewScreen extends ConsumerStatefulWidget {
     return WriteReviewScreen(key: key);
   }
 
+  /// Edit-mode entry — prefills from an existing review.
+  factory WriteReviewScreen.edit(ReviewEntity review, {Key? key}) {
+    return WriteReviewScreen(key: key, existingReview: review);
+  }
+
   @override
   ConsumerState<WriteReviewScreen> createState() => _WriteReviewScreenState();
 }
@@ -67,7 +85,10 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
   static const int _maxComment = 150;
 
   ReviewRestaurant? _restaurant;
-  final List<XFile> _photos = [];
+  // Instagram-style pre-upload: photos are processed + uploaded the moment
+  // they're picked. The manager owns their lifecycle; the screen rebuilds
+  // on its notifier.
+  final PhotoUploadManager _uploadManager = PhotoUploadManager();
   int _rating = 0;
   final Set<String> _tagKeys = {};
   bool _anonymous = false;
@@ -75,28 +96,55 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
   bool _posting = false;
   final ImagePicker _picker = ImagePicker();
 
+  bool get _isEdit => widget.existingReview != null;
+
   @override
   void initState() {
     super.initState();
-    _restaurant = widget.initialRestaurant;
-    _comment.addListener(() => setState(() {}));
+    final review = widget.existingReview;
+    if (review != null) {
+      _restaurant = ReviewRestaurant(
+        placeId: review.placeId,
+        name: review.placeName,
+      );
+      _uploadManager.loadExistingPhotos(review.photoUrls);
+      _rating = review.rating.round();
+      _tagKeys
+        ..addAll(review.moodTags)
+        ..addAll(review.priceTags);
+      _comment.text = review.comment;
+    } else {
+      _restaurant = widget.initialRestaurant;
+    }
+    _comment.addListener(_onChanged);
+    _uploadManager.photosNotifier.addListener(_onChanged);
+  }
+
+  void _onChanged() {
+    if (mounted) setState(() {});
   }
 
   @override
   void dispose() {
     _comment.dispose();
+    _uploadManager.photosNotifier.removeListener(_onChanged);
+    _uploadManager.dispose();
     super.dispose();
   }
 
+  int get _photoCount => _uploadManager.count;
+
   bool get _hasContent =>
-      _photos.isNotEmpty ||
+      _uploadManager.count > 0 ||
+      _uploadManager.removedExistingUrls.isNotEmpty ||
       _rating > 0 ||
       _tagKeys.isNotEmpty ||
       _comment.text.isNotEmpty;
 
   bool get _canPost =>
       _restaurant != null &&
-      _photos.isNotEmpty &&
+      _uploadManager.count > 0 &&
+      _uploadManager.allPhotosReady &&
       _rating > 0 &&
       _tagKeys.isNotEmpty &&
       !_posting;
@@ -108,19 +156,30 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
     }
     final lang = ref.read(appLocaleProvider).languageCode;
     final l = _Labels.of(lang);
+    final hasPhotos = _uploadManager.count > 0;
     final discard = await DiscardDialog.show(
       context,
       title: l.discardTitle,
-      body: l.discardBody,
+      // When photos are already uploaded, warn that they'll be removed.
+      body: hasPhotos ? l.discardReviewMessage : l.discardBody,
       discardLabel: l.discardYes,
       keepLabel: l.discardNo,
     );
-    if (discard == true && mounted) context.pop();
+    if (discard == true && mounted) {
+      // Clean up any pre-uploaded photos from Storage before leaving.
+      await _uploadManager.cancelAll();
+      if (mounted) context.pop();
+    }
   }
 
   Future<void> _pickPhotos() async {
     final lang = ref.read(appLocaleProvider).languageCode;
     final l = _Labels.of(lang);
+    final userId = ref.read(currentUserProvider)?.uid;
+    if (userId == null) {
+      showTabeminaSnackbar(context, message: l.signInRequired);
+      return;
+    }
     final source = await PhotoSourceSheet.show(
       context,
       cameraLabel: l.takePhoto,
@@ -128,7 +187,7 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
     );
     if (source == null) return;
 
-    final remaining = _maxPhotos - _photos.length;
+    final remaining = _maxPhotos - _photoCount;
     if (remaining <= 0) return;
 
     try {
@@ -138,15 +197,17 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
           maxWidth: 1200,
           imageQuality: 82,
         );
-        if (shot != null && mounted) setState(() => _photos.add(shot));
+        // Fire-and-forget: each addPhoto processes + uploads in the
+        // background, updating the manager's notifier as it goes.
+        if (shot != null) _uploadManager.addPhoto(File(shot.path), userId);
       } else {
         final picked = await _picker.pickMultiImage(
           maxWidth: 1200,
           imageQuality: 82,
           limit: remaining,
         );
-        if (picked.isNotEmpty && mounted) {
-          setState(() => _photos.addAll(picked.take(remaining)));
+        for (final x in picked.take(remaining)) {
+          _uploadManager.addPhoto(File(x.path), userId);
         }
       }
     } on PlatformException {
@@ -155,8 +216,20 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
     }
   }
 
-  void _removePhoto(int index) {
-    setState(() => _photos.removeAt(index));
+  void _removePhoto(String localId) {
+    _uploadManager.removePhoto(localId);
+  }
+
+  void _retryPhoto(String localId) {
+    final userId = ref.read(currentUserProvider)?.uid;
+    if (userId == null) return;
+    _uploadManager.retryPhoto(localId, userId);
+  }
+
+  void _retryAllFailed() {
+    final userId = ref.read(currentUserProvider)?.uid;
+    if (userId == null) return;
+    _uploadManager.retryAllFailed(userId);
   }
 
   void _toggleTag(String key) {
@@ -202,44 +275,91 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
       }
     }
 
-    final draft = ReviewDraftData(
-      userId: user.uid,
-      userName: _anonymous
-          ? l.anonymousAuthor
-          : (user.displayName?.isNotEmpty == true
-              ? user.displayName!
-              : l.anonymousAuthor),
-      userPhotoUrl: _anonymous ? null : user.photoUrl,
-      placeId: _restaurant!.placeId,
-      placeName: _restaurant!.name,
-      rating: _rating.toDouble(),
-      comment: _comment.text,
-      moodTags: moodTags,
-      priceTags: priceTags,
-      language: lang,
-    );
+    final repo = ref.read(reviewRepositoryProvider);
+    // Photos are already uploaded by the manager — submit is just a write.
+    final photoUrls = _uploadManager.completedUrls;
 
     try {
-      await ref.read(reviewRepositoryProvider).submitReview(
-            draft,
-            _photos.map((x) => File(x.path)).toList(),
-          );
-      // Refresh the home feed's latest reviews so the user sees their post
-      // when they go back. The placeReviewsProvider on the detail screen
-      // is already a stream, so it'll pick the new doc up on its own.
+      if (_isEdit) {
+        // Edit mode: carry the original entity forward with the edited
+        // fields; the repo preserves createdAt / userId. photoUrls is the
+        // final list (kept existing + newly pre-uploaded); removed existing
+        // photos are deleted from Storage.
+        final original = widget.existingReview!;
+        final updated = ReviewEntity(
+          reviewId: original.reviewId,
+          userId: original.userId,
+          userName: original.userName,
+          userPhotoUrl: original.userPhotoUrl,
+          placeId: original.placeId,
+          placeName: original.placeName,
+          placeAddress: original.placeAddress,
+          placeLat: original.placeLat,
+          placeLng: original.placeLng,
+          rating: _rating.toDouble(),
+          comment: _comment.text,
+          moodTags: moodTags,
+          priceTags: priceTags,
+          photoUrls: photoUrls,
+          language: original.language,
+          createdAt: original.createdAt,
+          updatedAt: original.updatedAt,
+        );
+        await repo.updateReview(
+          updated,
+          photoUrls,
+          _uploadManager.removedExistingUrls,
+        );
+        await _uploadManager.commitRemovals();
+      } else {
+        final draft = ReviewDraftData(
+          userId: user.uid,
+          userName: _anonymous
+              ? l.anonymousAuthor
+              : (user.displayName?.isNotEmpty == true
+                  ? user.displayName!
+                  : l.anonymousAuthor),
+          userPhotoUrl: _anonymous ? null : user.photoUrl,
+          placeId: _restaurant!.placeId,
+          placeName: _restaurant!.name,
+          rating: _rating.toDouble(),
+          comment: _comment.text,
+          moodTags: moodTags,
+          priceTags: priceTags,
+          language: lang,
+        );
+        await repo.submitReview(draft, photoUrls);
+      }
+
+      // Refresh the home feed's latest reviews + the user's grid. The
+      // detail page's placeReviewsProvider is a stream, so it picks up
+      // the change on its own.
       ref.invalidate(latestReviewsProvider);
       ref.invalidate(userReviewsProvider);
+      // A fresh post starts the per-place cooldown — refresh those checks
+      // so the detail page reflects it when the user returns.
+      final postedPlaceId = _restaurant!.placeId;
+      ref.invalidate(canReviewPlaceProvider(postedPlaceId));
+      ref.invalidate(reviewCooldownRemainingProvider(postedPlaceId));
       if (!mounted) return;
       HapticFeedback.lightImpact();
-      await SuccessOverlay.show(
-        context,
-        title: l.successTitle,
-        subtitle: l.successSubtitle,
-      );
-      if (mounted) context.pop();
+      if (_isEdit) {
+        showTabeminaSnackbar(context, message: l.reviewUpdated);
+        context.pop();
+      } else {
+        await SuccessOverlay.show(
+          context,
+          title: l.successTitle,
+          subtitle: l.successSubtitle,
+        );
+        if (mounted) context.pop();
+      }
     } catch (_) {
       if (mounted) {
-        showTabeminaSnackbar(context, message: l.postFailed);
+        showTabeminaSnackbar(
+          context,
+          message: _isEdit ? l.reviewUpdateFailed : l.postFailed,
+        );
       }
     } finally {
       if (mounted) setState(() => _posting = false);
@@ -252,32 +372,66 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
     final lang = ref.watch(appLocaleProvider).languageCode;
     final l = _Labels.of(lang);
 
+    // 24h per-place cooldown — create mode only (editing an existing review
+    // is exempt). While the check is loading we optimistically allow; once
+    // it resolves to a remaining Duration we disable Post and show a banner.
+    final placeId = _restaurant?.placeId;
+    final Duration? cooldownRemaining =
+        (!_isEdit && placeId != null)
+            ? ref.watch(reviewCooldownRemainingProvider(placeId)).maybeWhen(
+                  data: (d) => d,
+                  orElse: () => null,
+                )
+            : null;
+    final cooldownActive = cooldownRemaining != null;
+
     // Intercept the iOS swipe-back gesture when the user has unsaved
     // content so they get the same discard prompt as the back-arrow tap.
     // canPop: false blocks the pop; onPopInvokedWithResult routes through
     // the existing discard dialog and pops only on confirm.
     return PopScope(
-      canPop: !_hasContent,
+      // Block back entirely while a submit is in flight; otherwise gate on
+      // unsaved content via the discard prompt.
+      canPop: !_hasContent && !_posting,
       onPopInvokedWithResult: (didPop, _) async {
-        if (didPop) return;
+        if (didPop || _posting) return;
         await _onClose();
       },
       child: Scaffold(
         backgroundColor: c.bgPage,
         resizeToAvoidBottomInset: true,
         appBar: ReviewTopBar(
-          title: l.screenTitle,
+          title: _isEdit ? l.editTitle : l.screenTitle,
           draftLabel: l.draft,
           onClose: _onClose,
         ),
-      bottomNavigationBar: PostButtonBar(
-        enabled: _canPost,
-        posting: _posting,
-        onPost: _post,
-        label: l.postReview,
-        postingLabel: l.posting,
+      bottomNavigationBar: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (cooldownActive)
+            _CooldownBanner(
+              message: CooldownLabels.of(lang).message(cooldownRemaining),
+            ),
+          PostButtonBar(
+            enabled: _canPost && !cooldownActive,
+            posting: _posting,
+            uploading: _uploadManager.hasActiveUploads,
+            hasFailed: _uploadManager.hasFailedUploads,
+            onPost: _post,
+            onRetryFailed: _retryAllFailed,
+            label: _isEdit ? l.updateReview : l.postReview,
+            postingLabel: _isEdit ? l.updating : l.posting,
+            uploadingLabel: l.photosUploading,
+            retryLabel: l.retryFailedUploads,
+          ),
+        ],
       ),
-      body: SingleChildScrollView(
+      // Lock the form's inputs while a submit is in flight so the user
+      // can't mutate fields mid-upload. The bottom bar lives outside this
+      // and self-guards via its own `posting` flag.
+      body: AbsorbPointer(
+        absorbing: _posting,
+        child: SingleChildScrollView(
         padding: const EdgeInsets.only(bottom: 16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -286,7 +440,11 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
               RestaurantMiniCard(
                 restaurant: _restaurant!,
                 changeLabel: l.change,
-                onChange: () => setState(() => _restaurant = null),
+                // Locked in edit mode — you can't move a review to a
+                // different restaurant.
+                onChange: _isEdit
+                    ? null
+                    : () => setState(() => _restaurant = null),
               )
             else
               RestaurantSearchSelect(
@@ -299,10 +457,11 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
                 ),
               ),
             PhotoSection(
-              photos: _photos,
+              photos: _uploadManager.photosNotifier.value,
               maxPhotos: _maxPhotos,
               onPick: _pickPhotos,
               onRemove: _removePhoto,
+              onRetry: _retryPhoto,
               l: PhotoSectionLabels(
                 title: l.photos,
                 requiredBadge: l.requiredBadge,
@@ -352,6 +511,50 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
         ),
       ),
       ),
+      ),
+    );
+  }
+}
+
+/// Warning banner shown above the post button when the 24h per-place
+/// cooldown is active. Rounded warning-tinted container with a clock icon.
+class _CooldownBanner extends StatelessWidget {
+  const _CooldownBanner({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AppColors.of(context);
+    return Container(
+      margin: const EdgeInsets.fromLTRB(
+        AppConstants.spaceLg,
+        AppConstants.spaceSm,
+        AppConstants.spaceLg,
+        0,
+      ),
+      padding: const EdgeInsets.all(AppConstants.spaceMd),
+      decoration: BoxDecoration(
+        color: c.warningBg,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.schedule, size: 18, color: c.warningText),
+          const SizedBox(width: AppConstants.spaceSm),
+          Expanded(
+            child: Text(
+              message,
+              style: TextStyle(
+                fontFamily: 'Pretendard',
+                fontSize: 13,
+                color: c.warningText,
+                height: 1.3,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -363,6 +566,7 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
 class _Labels {
   const _Labels._({
     required this.screenTitle,
+    required this.editTitle,
     required this.draft,
     required this.change,
     required this.photos,
@@ -383,11 +587,18 @@ class _Labels {
     required this.anonymousHint,
     required this.anonymousAuthor,
     required this.postReview,
+    required this.updateReview,
     required this.posting,
+    required this.updating,
+    required this.photosUploading,
+    required this.retryFailedUploads,
     required this.postFailed,
+    required this.reviewUpdated,
+    required this.reviewUpdateFailed,
     required this.signInRequired,
     required this.discardTitle,
     required this.discardBody,
+    required this.discardReviewMessage,
     required this.discardYes,
     required this.discardNo,
     required this.successTitle,
@@ -399,6 +610,7 @@ class _Labels {
   });
 
   final String screenTitle;
+  final String editTitle;
   final String draft;
   final String change;
   final String photos;
@@ -419,11 +631,18 @@ class _Labels {
   final String anonymousHint;
   final String anonymousAuthor;
   final String postReview;
+  final String updateReview;
   final String posting;
+  final String updating;
+  final String photosUploading;
+  final String retryFailedUploads;
   final String postFailed;
+  final String reviewUpdated;
+  final String reviewUpdateFailed;
   final String signInRequired;
   final String discardTitle;
   final String discardBody;
+  final String discardReviewMessage;
   final String discardYes;
   final String discardNo;
   final String successTitle;
@@ -447,6 +666,7 @@ class _Labels {
 
   static final _en = _Labels._(
     screenTitle: 'Write review',
+    editTitle: 'Edit review',
     draft: 'Draft',
     change: 'Change',
     photos: 'Photos',
@@ -473,12 +693,19 @@ class _Labels {
     anonymousHint: "Your name won't be shown on this review",
     anonymousAuthor: 'Anonymous',
     postReview: 'Post review',
+    updateReview: 'Update review',
     posting: 'Posting...',
+    updating: 'Updating...',
+    photosUploading: 'Photos uploading...',
+    retryFailedUploads: 'Retry failed uploads',
     postFailed: "Couldn't post review. Please try again.",
+    reviewUpdated: 'Review updated',
+    reviewUpdateFailed: 'Failed to update. Please try again.',
     signInRequired: 'Please sign in to post a review.',
     discardTitle: 'Discard review?',
     discardBody:
         'You have unsaved changes. Are you sure you want to discard this review?',
+    discardReviewMessage: 'Your photos will be removed.',
     discardYes: 'Discard',
     discardNo: 'Keep editing',
     successTitle: 'Review posted!',
@@ -492,6 +719,7 @@ class _Labels {
 
   static final _ja = _Labels._(
     screenTitle: 'レビューを書く',
+    editTitle: 'レビューを編集',
     draft: '下書き',
     change: '変更',
     photos: '写真',
@@ -518,11 +746,18 @@ class _Labels {
     anonymousHint: 'このレビューに名前は表示されません',
     anonymousAuthor: '匿名',
     postReview: 'レビューを投稿',
+    updateReview: 'レビューを更新',
     posting: '投稿中...',
+    updating: '更新中...',
+    photosUploading: '写真アップロード中...',
+    retryFailedUploads: '失敗した写真を再アップロード',
     postFailed: 'レビューを投稿できませんでした。もう一度お試しください。',
+    reviewUpdated: 'レビューを更新しました',
+    reviewUpdateFailed: '更新に失敗しました。もう一度お試しください。',
     signInRequired: 'レビューを投稿するにはログインが必要です。',
     discardTitle: 'レビューを破棄しますか?',
     discardBody: '未保存の変更があります。本当に破棄しますか?',
+    discardReviewMessage: '写真は削除されます。',
     discardYes: '破棄',
     discardNo: '編集を続ける',
     successTitle: 'レビューを投稿しました!',
@@ -535,6 +770,7 @@ class _Labels {
 
   static final _ko = _Labels._(
     screenTitle: '리뷰 작성',
+    editTitle: '리뷰 수정',
     draft: '임시저장',
     change: '변경',
     photos: '사진',
@@ -561,11 +797,18 @@ class _Labels {
     anonymousHint: '이 리뷰에 이름이 표시되지 않습니다',
     anonymousAuthor: '익명',
     postReview: '리뷰 게시',
+    updateReview: '리뷰 수정하기',
     posting: '게시 중...',
+    updating: '수정 중...',
+    photosUploading: '사진 업로드 중...',
+    retryFailedUploads: '실패한 사진 다시 업로드',
     postFailed: '리뷰를 게시할 수 없습니다. 다시 시도해 주세요.',
+    reviewUpdated: '리뷰가 수정되었습니다',
+    reviewUpdateFailed: '수정에 실패했습니다. 다시 시도해주세요.',
     signInRequired: '리뷰를 게시하려면 로그인이 필요합니다.',
     discardTitle: '리뷰를 삭제할까요?',
     discardBody: '저장되지 않은 변경 사항이 있습니다. 정말로 삭제하시겠어요?',
+    discardReviewMessage: '사진이 삭제됩니다.',
     discardYes: '삭제',
     discardNo: '계속 작성',
     successTitle: '리뷰가 게시되었습니다!',

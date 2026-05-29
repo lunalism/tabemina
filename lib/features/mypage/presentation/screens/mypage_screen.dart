@@ -16,7 +16,6 @@ import '../../../../shared/widgets/app_error_kind.dart';
 import '../../../../shared/widgets/app_state_labels.dart';
 import '../../../../shared/widgets/shimmer_box.dart';
 import '../../../../shared/widgets/tabemina_snackbar.dart';
-import '../../../bookmarks/presentation/widgets/bookmarks_list_view.dart';
 import '../mypage_labels.dart';
 import '../widgets/appearance_selector_modal.dart';
 import '../widgets/language_selector_modal.dart';
@@ -162,7 +161,9 @@ class _TabBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = AppColors.of(context);
-    final tabs = [labels.myReviewsTab, labels.savedTab, labels.visitedTab];
+    // "Saved" lives in the dedicated Bookmarks bottom tab, so it's omitted
+    // here to avoid duplication — only My reviews + Visited remain.
+    final tabs = [labels.myReviewsTab, labels.visitedTab];
     return Container(
       decoration: BoxDecoration(
         border: Border(
@@ -232,11 +233,6 @@ class _TabContent extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     switch (tab) {
       case 1:
-        return const Padding(
-          padding: EdgeInsets.only(top: AppConstants.spaceSm),
-          child: BookmarksListView(shrinkWrap: true),
-        );
-      case 2:
         return VisitedEmptyState(labels: labels);
       case 0:
       default:

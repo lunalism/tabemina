@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 
@@ -8,9 +6,10 @@ import '../../domain/repositories/review_repository.dart';
 
 /// Firestore + Storage implementation of [ReviewRepository].
 ///
-/// Documents live in the top-level `reviews` collection; their photos live
-/// in Storage under `reviews/{reviewId}/{filename}` so the document and its
-/// attachments share a key and can be cleaned up together on delete.
+/// Photos are pre-uploaded to Storage by the write-review flow (see
+/// PhotoUploadManager), so submit/update are pure Firestore writes that
+/// just persist the already-resolved photo URLs. Deleting a review still
+/// clears its Storage folder.
 class FirebaseReviewRepository implements ReviewRepository {
   FirebaseReviewRepository({
     FirebaseFirestore? firestore,
@@ -27,16 +26,10 @@ class FirebaseReviewRepository implements ReviewRepository {
   @override
   Future<ReviewEntity> submitReview(
     ReviewDraftData draft,
-    List<File> photos,
+    List<String> photoUrls,
   ) async {
-    // Reserve the doc up-front so we can use its id as the photo folder
-    // name. This keeps photo → review mapping deterministic even if the
-    // Firestore write fails (we can clean up by review id later).
     final docRef = _reviews.doc();
     final reviewId = docRef.id;
-
-    final photoUrls = await _uploadPhotos(reviewId, photos);
-
     final now = DateTime.now();
     final data = <String, dynamic>{
       'reviewId': reviewId,
@@ -81,12 +74,90 @@ class FirebaseReviewRepository implements ReviewRepository {
   }
 
   @override
+  Future<ReviewEntity> updateReview(
+    ReviewEntity review,
+    List<String> photoUrls,
+    List<String> removedPhotoUrls,
+  ) async {
+    // Delete removed photos from Storage (best-effort — a failed delete
+    // leaves an orphan blob but doesn't block the edit). New photos are
+    // already uploaded by the pre-upload flow, so [photoUrls] is final.
+    for (final url in removedPhotoUrls) {
+      try {
+        await _storage.refFromURL(url).delete();
+      } on FirebaseException {
+        // Already gone / no permission — ignore.
+      }
+    }
+
+    await _reviews.doc(review.reviewId).update({
+      'rating': review.rating,
+      'comment': review.comment,
+      'moodTags': review.moodTags,
+      'priceTags': review.priceTags,
+      'photoUrls': photoUrls,
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+
+    return ReviewEntity(
+      reviewId: review.reviewId,
+      userId: review.userId,
+      userName: review.userName,
+      userPhotoUrl: review.userPhotoUrl,
+      placeId: review.placeId,
+      placeName: review.placeName,
+      placeAddress: review.placeAddress,
+      placeLat: review.placeLat,
+      placeLng: review.placeLng,
+      rating: review.rating,
+      comment: review.comment,
+      moodTags: review.moodTags,
+      priceTags: review.priceTags,
+      photoUrls: photoUrls,
+      language: review.language,
+      createdAt: review.createdAt,
+      updatedAt: DateTime.now(),
+    );
+  }
+
+  @override
   Future<List<ReviewEntity>> getReviewsForPlace(String placeId) async {
     final snap = await _reviews
         .where('placeId', isEqualTo: placeId)
         .orderBy('createdAt', descending: true)
         .get();
     return snap.docs.map((d) => _fromDoc(d.id, d.data())).toList();
+  }
+
+  @override
+  Future<DateTime?> getLastReviewTimeForPlace(
+    String userId,
+    String placeId,
+  ) async {
+    // Two equality filters only — no orderBy — so this is served by
+    // automatic single-field indexes and needs no composite index. A user
+    // has at most a handful of reviews per place, so taking the max
+    // createdAt client-side is cheap.
+    final snap = await _reviews
+        .where('userId', isEqualTo: userId)
+        .where('placeId', isEqualTo: placeId)
+        .get();
+    DateTime? latest;
+    for (final doc in snap.docs) {
+      final ts = doc.data()['createdAt'];
+      if (ts is Timestamp) {
+        final dt = ts.toDate();
+        if (latest == null || dt.isAfter(latest)) latest = dt;
+      }
+    }
+    return latest;
+  }
+
+  @override
+  Future<bool> canReviewPlace(String userId, String placeId) async {
+    final last = await getLastReviewTimeForPlace(userId, placeId);
+    if (last == null) return true;
+    return DateTime.now().difference(last) >= const Duration(hours: 24);
   }
 
   @override
@@ -131,44 +202,6 @@ class FirebaseReviewRepository implements ReviewRepository {
       // No-op — the folder may not exist (review had no photos), or the
       // user lacks delete permission for an older review. Either way the
       // user already sees the review as gone.
-    }
-  }
-
-  Future<List<String>> _uploadPhotos(String reviewId, List<File> photos) async {
-    final urls = <String>[];
-    for (var i = 0; i < photos.length; i++) {
-      final file = photos[i];
-      final ext = _extensionOf(file.path);
-      final name = '${DateTime.now().millisecondsSinceEpoch}_$i$ext';
-      final ref = _storage.ref('reviews/$reviewId/$name');
-      // image_picker already downsamples to maxWidth=1200 / quality=82, so
-      // most photos land under 1MB. A heavy server-side compress pass
-      // would need a native lib and isn't worth the build complexity for
-      // v1 — the existing picker config keeps payloads reasonable.
-      await ref.putFile(file, _metadataFor(ext));
-      urls.add(await ref.getDownloadURL());
-    }
-    return urls;
-  }
-
-  String _extensionOf(String path) {
-    final slash = path.lastIndexOf('/');
-    final dot = path.lastIndexOf('.');
-    if (dot < 0 || dot < slash) return '.jpg';
-    return path.substring(dot).toLowerCase();
-  }
-
-  SettableMetadata? _metadataFor(String ext) {
-    switch (ext) {
-      case '.jpg':
-      case '.jpeg':
-        return SettableMetadata(contentType: 'image/jpeg');
-      case '.png':
-        return SettableMetadata(contentType: 'image/png');
-      case '.webp':
-        return SettableMetadata(contentType: 'image/webp');
-      default:
-        return null;
     }
   }
 

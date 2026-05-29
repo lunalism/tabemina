@@ -29,6 +29,14 @@ class MyPageLabels {
     required this.writeFirstReview,
     required this.noVisitedPlaces,
     required this.visitedComingSoon,
+    required this.editReview,
+    required this.deleteReview,
+    required this.deleteReviewConfirmTitle,
+    required this.deleteReviewConfirmBody,
+    required this.cancel,
+    required this.delete,
+    required this.reviewDeleted,
+    required this.reviewDeleteFailed,
   });
 
   final String guestTitle;
@@ -56,6 +64,16 @@ class MyPageLabels {
   final String writeFirstReview;
   final String noVisitedPlaces;
   final String visitedComingSoon;
+
+  // Review actions (long-press menu + delete confirm)
+  final String editReview;
+  final String deleteReview;
+  final String deleteReviewConfirmTitle;
+  final String deleteReviewConfirmBody;
+  final String cancel;
+  final String delete;
+  final String reviewDeleted;
+  final String reviewDeleteFailed;
 
   static MyPageLabels of(String lang) {
     switch (lang) {
@@ -94,6 +112,14 @@ class MyPageLabels {
     writeFirstReview: 'Write first review',
     noVisitedPlaces: 'No visited places',
     visitedComingSoon: "Coming soon! We'll track your food adventures.",
+    editReview: 'Edit review',
+    deleteReview: 'Delete review',
+    deleteReviewConfirmTitle: 'Delete review?',
+    deleteReviewConfirmBody: 'This action cannot be undone.',
+    cancel: 'Cancel',
+    delete: 'Delete',
+    reviewDeleted: 'Review deleted',
+    reviewDeleteFailed: 'Failed to delete. Please try again.',
   );
 
   static const _ja = MyPageLabels(
@@ -120,6 +146,14 @@ class MyPageLabels {
     writeFirstReview: '最初のレビューを書く',
     noVisitedPlaces: '訪問した場所はありません',
     visitedComingSoon: '近日公開！あなたのグルメ冒険を記録します。',
+    editReview: 'レビューを編集',
+    deleteReview: 'レビューを削除',
+    deleteReviewConfirmTitle: 'レビューを削除しますか？',
+    deleteReviewConfirmBody: 'この操作は取り消せません。',
+    cancel: 'キャンセル',
+    delete: '削除',
+    reviewDeleted: 'レビューを削除しました',
+    reviewDeleteFailed: '削除に失敗しました。もう一度お試しください。',
   );
 
   static const _ko = MyPageLabels(
@@ -146,5 +180,13 @@ class MyPageLabels {
     writeFirstReview: '첫 리뷰 쓰기',
     noVisitedPlaces: '방문한 곳이 없습니다',
     visitedComingSoon: '곧 제공 예정! 당신의 미식 여정을 기록할게요.',
+    editReview: '리뷰 수정',
+    deleteReview: '리뷰 삭제',
+    deleteReviewConfirmTitle: '리뷰를 삭제하시겠습니까?',
+    deleteReviewConfirmBody: '이 작업은 되돌릴 수 없습니다.',
+    cancel: '취소',
+    delete: '삭제',
+    reviewDeleted: '리뷰가 삭제되었습니다',
+    reviewDeleteFailed: '삭제에 실패했습니다. 다시 시도해주세요.',
   );
 }

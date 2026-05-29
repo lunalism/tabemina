@@ -1,6 +1,7 @@
 import 'package:flutter/cupertino.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../domain/entities/review_entity.dart';
 import '../../features/bookmarks/presentation/screens/bookmarks_screen.dart';
 import '../../features/home/presentation/screens/home_screen.dart';
 import '../../features/mypage/presentation/screens/mypage_screen.dart';
@@ -21,6 +22,7 @@ abstract class AppRoutes {
   static const String mypage = '/mypage';
   static const String restaurantDetail = '/restaurant';
   static const String writeReview = '/write-review';
+  static const String editReview = '/edit-review';
 
   static String restaurantDetailFor(String placeId) =>
       '$restaurantDetail/$placeId';
@@ -62,6 +64,21 @@ final GoRouter appRouter = GoRouter(
         key: state.pageKey,
         child: WriteReviewScreen.fromExtra(state.extra),
       ),
+    ),
+    // Edit-review push — same screen in edit mode, prefilled from the
+    // ReviewEntity passed via `extra`. Standard push so the left-edge
+    // swipe-back gesture works.
+    GoRoute(
+      path: AppRoutes.editReview,
+      pageBuilder: (context, state) {
+        final review = state.extra as ReviewEntity?;
+        return CupertinoPage<void>(
+          key: state.pageKey,
+          child: review != null
+              ? WriteReviewScreen.edit(review)
+              : const WriteReviewScreen(),
+        );
+      },
     ),
     // Restaurant detail. CupertinoPage gives the native iOS slide-from-right
     // push and — critically — the interactive swipe-back gesture from the

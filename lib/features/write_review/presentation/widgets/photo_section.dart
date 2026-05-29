@@ -1,18 +1,17 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_constants.dart';
+import '../../../../shared/widgets/network_image_fade.dart';
+import '../../domain/models/photo_upload_state.dart';
 import 'section_label.dart';
 
-/// Photo strip — add slot + filled slots with remove + Cover badge.
-///
-/// State (photo list, max count) is owned by the parent screen; this widget
-/// only renders and bubbles up callbacks. Image compression happens at pick
-/// time via [ImagePicker]'s `maxWidth`/`imageQuality`, so the parent only
-/// has to track the resulting [XFile]s.
+/// Photo strip — add slot + filled slots showing each photo's pre-upload
+/// state (processing / uploading % / completed / failed). State is owned by
+/// the parent's PhotoUploadManager; this widget only renders and bubbles up
+/// pick / remove / retry callbacks.
 class PhotoSection extends StatelessWidget {
   const PhotoSection({
     super.key,
@@ -20,13 +19,15 @@ class PhotoSection extends StatelessWidget {
     required this.maxPhotos,
     required this.onPick,
     required this.onRemove,
+    required this.onRetry,
     required this.l,
   });
 
-  final List<XFile> photos;
+  final List<PhotoUploadState> photos;
   final int maxPhotos;
   final VoidCallback onPick;
-  final void Function(int index) onRemove;
+  final void Function(String localId) onRemove;
+  final void Function(String localId) onRetry;
   final PhotoSectionLabels l;
 
   @override
@@ -64,11 +65,12 @@ class PhotoSection extends StatelessWidget {
                   const SizedBox(width: AppConstants.spaceSm),
                 ],
                 for (int i = 0; i < photos.length; i++) ...[
-                  _FilledSlot(
+                  _PhotoSlot(
                     photo: photos[i],
                     isCover: i == 0,
                     coverLabel: l.cover,
-                    onRemove: () => onRemove(i),
+                    onRemove: () => onRemove(photos[i].localId),
+                    onRetry: () => onRetry(photos[i].localId),
                   ),
                   if (i < photos.length - 1)
                     const SizedBox(width: AppConstants.spaceSm),
@@ -112,6 +114,190 @@ class PhotoSectionLabels {
   final String hint;
 }
 
+class _PhotoSlot extends StatelessWidget {
+  const _PhotoSlot({
+    required this.photo,
+    required this.isCover,
+    required this.coverLabel,
+    required this.onRemove,
+    required this.onRetry,
+  });
+
+  final PhotoUploadState photo;
+  final bool isCover;
+  final String coverLabel;
+  final VoidCallback onRemove;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 80,
+      height: 110,
+      child: Stack(
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: _base(),
+          ),
+          // Status overlay (processing / uploading / failed).
+          Positioned.fill(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: _overlay(context),
+            ),
+          ),
+          if (isCover && photo.status == PhotoUploadStatus.completed)
+            Positioned(
+              left: 4,
+              bottom: 4,
+              child: _Badge(label: coverLabel),
+            ),
+          if (photo.status == PhotoUploadStatus.completed)
+            const Positioned(right: 4, bottom: 4, child: _CompletedCheck()),
+          Positioned(
+            top: 4,
+            right: 4,
+            child: Material(
+              color: const Color(0x80000000),
+              shape: const CircleBorder(),
+              child: InkWell(
+                customBorder: const CircleBorder(),
+                onTap: onRemove,
+                child: const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child:
+                      Icon(Icons.close_rounded, size: 12, color: Colors.white),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _base() {
+    if (photo.isExisting && photo.downloadUrl != null) {
+      return FadeInNetworkImage(
+        url: photo.downloadUrl!,
+        width: 80,
+        height: 110,
+        borderRadius: 8,
+      );
+    }
+    return Image.file(
+      File(photo.processedFile?.path ?? photo.originalFile.path),
+      width: 80,
+      height: 110,
+      fit: BoxFit.cover,
+    );
+  }
+
+  Widget _overlay(BuildContext context) {
+    switch (photo.status) {
+      case PhotoUploadStatus.processing:
+        return Container(
+          color: const Color(0x66000000),
+          alignment: Alignment.center,
+          child: const SizedBox(
+            width: 16,
+            height: 16,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              color: Colors.white,
+            ),
+          ),
+        );
+      case PhotoUploadStatus.uploading:
+        return Container(
+          color: const Color(0x66000000),
+          alignment: Alignment.center,
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              SizedBox(
+                width: 28,
+                height: 28,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: Colors.white,
+                  value: photo.uploadProgress > 0 ? photo.uploadProgress : null,
+                ),
+              ),
+              Text(
+                '${(photo.uploadProgress * 100).round()}%',
+                style: const TextStyle(
+                  fontFamily: 'Pretendard',
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white,
+                ),
+              ),
+            ],
+          ),
+        );
+      case PhotoUploadStatus.failed:
+        return Material(
+          color: const Color(0x99C0392B),
+          child: InkWell(
+            onTap: onRetry,
+            child: const Center(
+              child: Icon(Icons.refresh_rounded, size: 24, color: Colors.white),
+            ),
+          ),
+        );
+      case PhotoUploadStatus.completed:
+        return const SizedBox.shrink();
+    }
+  }
+}
+
+class _Badge extends StatelessWidget {
+  const _Badge({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: const Color(0x80000000),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(
+          fontFamily: 'Pretendard',
+          fontSize: 9,
+          fontWeight: FontWeight.w500,
+          color: Colors.white,
+        ),
+      ),
+    );
+  }
+}
+
+class _CompletedCheck extends StatelessWidget {
+  const _CompletedCheck();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 16,
+      height: 16,
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        shape: BoxShape.circle,
+      ),
+      alignment: Alignment.center,
+      child: const Icon(Icons.check_circle, size: 16, color: Color(0xFF2E9E5B)),
+    );
+  }
+}
+
 class _AddSlot extends StatelessWidget {
   const _AddSlot({required this.label, required this.onTap});
 
@@ -152,84 +338,7 @@ class _AddSlot extends StatelessWidget {
   }
 }
 
-class _FilledSlot extends StatelessWidget {
-  const _FilledSlot({
-    required this.photo,
-    required this.isCover,
-    required this.coverLabel,
-    required this.onRemove,
-  });
-
-  final XFile photo;
-  final bool isCover;
-  final String coverLabel;
-  final VoidCallback onRemove;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: 80,
-      height: 110,
-      child: Stack(
-        children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(8),
-            child: Image.file(
-              File(photo.path),
-              width: 80,
-              height: 110,
-              fit: BoxFit.cover,
-            ),
-          ),
-          if (isCover)
-            Positioned(
-              left: 4,
-              bottom: 4,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  color: const Color(0x80000000),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Text(
-                  coverLabel,
-                  style: const TextStyle(
-                    fontFamily: 'Pretendard',
-                    fontSize: 9,
-                    fontWeight: FontWeight.w500,
-                    color: Colors.white,
-                  ),
-                ),
-              ),
-            ),
-          Positioned(
-            top: 4,
-            right: 4,
-            child: Material(
-              color: const Color(0x80000000),
-              shape: const CircleBorder(),
-              child: InkWell(
-                customBorder: const CircleBorder(),
-                onTap: onRemove,
-                child: const SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: Icon(Icons.close_rounded, size: 12, color: Colors.white),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 /// Coral dashed border used by the "Add photo" slot.
-///
-/// Flutter doesn't ship a dashed border out of the box, so a custom painter
-/// draws the rounded-rect outline. Kept private to the photo section since
-/// it's the only consumer.
 class DottedBorder extends StatelessWidget {
   const DottedBorder({
     super.key,

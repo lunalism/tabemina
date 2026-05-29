@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import '../entities/review_entity.dart';
 
 /// A new review the user just composed in the write-review form. The
@@ -43,17 +41,36 @@ class ReviewDraftData {
 /// or Storage. Swapping backends means writing a new implementation, not
 /// changing any screen code.
 abstract class ReviewRepository {
-  /// Upload [photos] to backing storage, then write the resulting review
-  /// document. Returns the persisted entity (with [reviewId], timestamps,
-  /// and final photo URLs).
+  /// Write the review document with already-uploaded [photoUrls]. Photos are
+  /// pre-uploaded to Storage by the write-review flow, so this is just a
+  /// Firestore write. Returns the persisted entity (with [reviewId] and
+  /// timestamps).
   Future<ReviewEntity> submitReview(
     ReviewDraftData draft,
-    List<File> photos,
+    List<String> photoUrls,
+  );
+
+  /// Edit an existing review. [photoUrls] is the final ordered list (kept
+  /// existing + newly pre-uploaded); [removedPhotoUrls] are deleted from
+  /// Storage. `createdAt` and `userId` are preserved; `updatedAt` is
+  /// refreshed. Returns the updated entity.
+  Future<ReviewEntity> updateReview(
+    ReviewEntity review,
+    List<String> photoUrls,
+    List<String> removedPhotoUrls,
   );
 
   Future<List<ReviewEntity>> getReviewsForPlace(String placeId);
 
   Future<List<ReviewEntity>> getReviewsByUser(String userId);
+
+  /// `createdAt` of the user's most recent review for [placeId], or null
+  /// if they've never reviewed it. Used for the 24h per-place cooldown.
+  Future<DateTime?> getLastReviewTimeForPlace(String userId, String placeId);
+
+  /// Whether [userId] may post a new review for [placeId] right now — true
+  /// if they've never reviewed it or their last review was 24h+ ago.
+  Future<bool> canReviewPlace(String userId, String placeId);
 
   /// One-shot read of the newest reviews across all places (Home feed).
   Future<List<ReviewEntity>> getLatestReviews({int limit = 10});
