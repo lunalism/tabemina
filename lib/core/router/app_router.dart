@@ -8,6 +8,7 @@ import '../../features/home/presentation/screens/home_screen.dart';
 import '../../features/mypage/presentation/screens/mypage_screen.dart';
 import '../../features/restaurant_detail/presentation/screens/restaurant_detail_screen.dart';
 import '../../features/review/presentation/screens/review_screen.dart';
+import '../../features/settings/presentation/screens/settings_screen.dart';
 import '../../features/search/presentation/screens/search_screen.dart';
 import '../../features/splash/presentation/screens/splash_screen.dart';
 import '../../features/write_review/presentation/screens/write_review_screen.dart';
@@ -24,6 +25,7 @@ abstract class AppRoutes {
   static const String restaurantDetail = '/restaurant';
   static const String writeReview = '/write-review';
   static const String editReview = '/edit-review';
+  static const String settings = '/settings';
   static const String blockedUsers = '/settings/blocked-users';
 
   static String restaurantDetailFor(String placeId) =>
@@ -82,8 +84,16 @@ final GoRouter appRouter = GoRouter(
         );
       },
     ),
-    // Blocked-users management (My Page → Settings). Standard iOS push so the
-    // back arrow + left-edge swipe both dismiss it.
+    // Settings (My Page gear icon). Standard iOS push.
+    GoRoute(
+      path: AppRoutes.settings,
+      pageBuilder: (context, state) => CupertinoPage<void>(
+        key: state.pageKey,
+        child: const SettingsScreen(),
+      ),
+    ),
+    // Blocked-users management (Settings → Blocked users). A sibling route of
+    // /settings, pushed on top, so it resolves exactly as before.
     GoRoute(
       path: AppRoutes.blockedUsers,
       pageBuilder: (context, state) => CupertinoPage<void>(

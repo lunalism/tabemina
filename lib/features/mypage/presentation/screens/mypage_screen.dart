@@ -5,7 +5,6 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/providers/app_locale_provider.dart';
-import '../../../../core/providers/app_theme_mode_provider.dart';
 import '../../../../core/router/app_router.dart';
 import '../../../../domain/entities/user_entity.dart';
 import '../../../../presentation/providers/auth_providers.dart';
@@ -15,22 +14,20 @@ import '../../../../presentation/widgets/login_bottom_sheet.dart';
 import '../../../../shared/widgets/app_error_kind.dart';
 import '../../../../shared/widgets/app_state_labels.dart';
 import '../../../../shared/widgets/shimmer_box.dart';
-import '../../../../shared/widgets/tabemina_snackbar.dart';
 import '../mypage_labels.dart';
-import '../widgets/appearance_selector_modal.dart';
-import '../widgets/language_selector_modal.dart';
 import '../widgets/review_photo_grid.dart';
 import '../widgets/reviews_empty_state.dart';
 import '../widgets/stats_row.dart';
 import '../widgets/visited_empty_state.dart';
 
-/// My Page — profile header + stats + tabbed content (reviews / saved /
-/// visited) + system settings.
+/// My Page — profile/content only: header + stats + tabbed content
+/// (reviews / visited). Settings moved to [SettingsScreen], reached via the
+/// top-right gear icon.
 ///
-/// The whole page is a single scroll view; the reviews grid and saved list
-/// shrink-wrap and delegate scrolling to it, so there's no nested-scroll
-/// conflict. Stats + tabs only render for a signed-in user (they're all
-/// account-scoped); guests see the sign-in prompt + settings.
+/// The whole page is a single scroll view; the reviews grid shrink-wraps and
+/// delegates scrolling to it, so there's no nested-scroll conflict. Stats +
+/// tabs only render for a signed-in user (they're all account-scoped); guests
+/// see the sign-in prompt.
 class MyPageScreen extends ConsumerStatefulWidget {
   const MyPageScreen({super.key});
 
@@ -39,24 +36,38 @@ class MyPageScreen extends ConsumerStatefulWidget {
 }
 
 class _MyPageScreenState extends ConsumerState<MyPageScreen> {
-  static const String _appVersion = '1.0.0';
-
   int _tab = 0;
 
   @override
   Widget build(BuildContext context) {
     final c = AppColors.of(context);
     final locale = ref.watch(appLocaleProvider);
-    final themeMode = ref.watch(appThemeModeProvider);
     final user = ref.watch(currentUserProvider);
     final lang = locale.languageCode;
     final labels = MyPageLabels.of(lang);
 
     return Scaffold(
       backgroundColor: c.bgPage,
+      appBar: AppBar(
+        backgroundColor: c.bgPage,
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        // Gear is always available — logged-out users still reach Language /
+        // Appearance. tooltip doubles as the accessibility label.
+        actions: [
+          IconButton(
+            icon: Icon(Icons.settings_outlined, size: 24, color: c.textPrimary),
+            tooltip: labels.settingsHeader,
+            onPressed: () => context.push(AppRoutes.settings),
+          ),
+          const SizedBox(width: AppConstants.spaceXs),
+        ],
+      ),
       body: SafeArea(
+        top: false,
         child: SingleChildScrollView(
-          padding: const EdgeInsets.only(top: AppConstants.spaceXl),
+          padding: const EdgeInsets.only(top: AppConstants.spaceSm),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -73,64 +84,12 @@ class _MyPageScreenState extends ConsumerState<MyPageScreen> {
                 _TabContent(tab: _tab, labels: labels),
               ] else
                 _GuestSection(labels: labels),
-              const SizedBox(height: AppConstants.spaceLg),
-              Divider(height: 1, thickness: 0.5, color: c.borderPrimary),
-              _SectionHeader(label: labels.settingsHeader),
-              _SettingRow(
-                icon: Icons.language_rounded,
-                label: labels.languageLabel,
-                trailing: localeDisplayName(locale),
-                onTap: () => LanguageSelectorModal.show(context),
-              ),
-              _SettingRow(
-                icon: Icons.brightness_6_outlined,
-                label: labels.appearanceLabel,
-                trailing: themeModeDisplayName(themeMode, lang),
-                onTap: () => AppearanceSelectorModal.show(context),
-              ),
-              _SettingRow(
-                icon: Icons.info_outline_rounded,
-                label: labels.versionLabel,
-                trailing: _appVersion,
-                onTap: null,
-              ),
-              // Account-scoped: blocking is per-user, so only signed-in users
-              // see the entry.
-              if (user != null)
-                _SettingRow(
-                  icon: Icons.block_outlined,
-                  label: labels.blockedUsers,
-                  trailing: '',
-                  onTap: () => context.push(AppRoutes.blockedUsers),
-                ),
-              if (user != null) ...[
-                const SizedBox(height: AppConstants.spaceLg),
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: AppConstants.spaceLg,
-                  ),
-                  child: _SignOutButton(
-                    label: labels.signOut,
-                    onTap: () => _signOut(context, labels),
-                  ),
-                ),
-              ],
               const SizedBox(height: AppConstants.spaceXl),
             ],
           ),
         ),
       ),
     );
-  }
-
-  Future<void> _signOut(BuildContext context, MyPageLabels labels) async {
-    // Drafts are per-account — drop the in-progress draft so it doesn't bleed
-    // into the next user's session.
-    await ref.read(draftStorageServiceProvider).clearDraft();
-    ref.invalidate(hasDraftProvider);
-    await ref.read(authRepositoryProvider).signOut();
-    if (!context.mounted) return;
-    showTabeminaSnackbar(context, message: labels.signedOutSnack);
   }
 }
 
@@ -142,14 +101,12 @@ class _StatsRowConnected extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final reviews = ref.watch(userReviewsProvider).maybeWhen(
-          data: (list) => list.length,
-          orElse: () => 0,
-        );
-    final saved = ref.watch(bookmarksProvider).maybeWhen(
-          data: (list) => list.length,
-          orElse: () => 0,
-        );
+    final reviews = ref
+        .watch(userReviewsProvider)
+        .maybeWhen(data: (list) => list.length, orElse: () => 0);
+    final saved = ref
+        .watch(bookmarksProvider)
+        .maybeWhen(data: (list) => list.length, orElse: () => 0);
     return StatsRow(
       labels: labels,
       reviews: reviews,
@@ -179,9 +136,7 @@ class _TabBar extends StatelessWidget {
     final tabs = [labels.myReviewsTab, labels.visitedTab];
     return Container(
       decoration: BoxDecoration(
-        border: Border(
-          bottom: BorderSide(color: c.borderPrimary, width: 0.5),
-        ),
+        border: Border(bottom: BorderSide(color: c.borderPrimary, width: 0.5)),
       ),
       child: Row(
         children: [
@@ -246,11 +201,30 @@ class _TabContent extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     switch (tab) {
       case 1:
-        return VisitedEmptyState(labels: labels);
+        return _CenteredEmptyArea(child: VisitedEmptyState(labels: labels));
       case 0:
       default:
         return _MyReviewsTab(labels: labels);
     }
+  }
+}
+
+/// Holds an empty state centered in a generous slice of the screen so the
+/// content-only My Page doesn't leave it cramped at the top. Only used for
+/// short (empty) states — the reviews grid keeps flowing in the page scroll.
+class _CenteredEmptyArea extends StatelessWidget {
+  const _CenteredEmptyArea({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return ConstrainedBox(
+      constraints: BoxConstraints(
+        minHeight: MediaQuery.sizeOf(context).height * 0.5,
+      ),
+      child: Center(child: child),
+    );
   }
 }
 
@@ -280,14 +254,15 @@ class _MyReviewsTab extends ConsumerWidget {
       ),
       data: (reviews) {
         if (reviews.isEmpty) {
-          final hasDraft = ref.watch(hasDraftProvider).maybeWhen(
-                data: (v) => v,
-                orElse: () => false,
-              );
-          return ReviewsEmptyState(
-            labels: labels,
-            hasDraft: hasDraft,
-            onWriteReview: () => context.push(AppRoutes.writeReview),
+          final hasDraft = ref
+              .watch(hasDraftProvider)
+              .maybeWhen(data: (v) => v, orElse: () => false);
+          return _CenteredEmptyArea(
+            child: ReviewsEmptyState(
+              labels: labels,
+              hasDraft: hasDraft,
+              onWriteReview: () => context.push(AppRoutes.writeReview),
+            ),
           );
         }
         return Padding(
@@ -510,124 +485,5 @@ class _InlineSignInButton extends StatelessWidget {
   }
 }
 
-class _SignOutButton extends StatelessWidget {
-  const _SignOutButton({required this.label, required this.onTap});
-
-  final String label;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = AppColors.of(context);
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        height: 44,
-        decoration: BoxDecoration(
-          border: Border.all(color: c.borderPrimary, width: 0.5),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        alignment: Alignment.center,
-        child: Text(
-          label,
-          style: TextStyle(
-            fontFamily: 'Pretendard',
-            fontSize: 14,
-            fontWeight: FontWeight.w500,
-            color: c.textPrimary,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _SectionHeader extends StatelessWidget {
-  const _SectionHeader({required this.label});
-
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = AppColors.of(context);
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(
-        AppConstants.spaceLg,
-        AppConstants.spaceXl,
-        AppConstants.spaceLg,
-        AppConstants.spaceSm,
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          fontFamily: 'Pretendard',
-          fontSize: 14,
-          fontWeight: FontWeight.w500,
-          letterSpacing: 0.8,
-          color: c.textSecondary,
-        ),
-      ),
-    );
-  }
-}
-
-class _SettingRow extends StatelessWidget {
-  const _SettingRow({
-    required this.icon,
-    required this.label,
-    required this.trailing,
-    required this.onTap,
-  });
-
-  final IconData icon;
-  final String label;
-  final String trailing;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = AppColors.of(context);
-    return InkWell(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(
-          horizontal: AppConstants.spaceLg,
-          vertical: AppConstants.spaceMd,
-        ),
-        child: Row(
-          children: [
-            Icon(icon, size: 20, color: c.textPrimary),
-            const SizedBox(width: AppConstants.spaceMd),
-            Expanded(
-              child: Text(
-                label,
-                style: TextStyle(
-                  fontFamily: 'Pretendard',
-                  fontSize: 15,
-                  color: c.textPrimary,
-                ),
-              ),
-            ),
-            Text(
-              trailing,
-              style: TextStyle(
-                fontFamily: 'Pretendard',
-                fontSize: 13,
-                color: c.textSecondary,
-              ),
-            ),
-            if (onTap != null) ...[
-              const SizedBox(width: 4),
-              Icon(
-                Icons.chevron_right_rounded,
-                size: 20,
-                color: c.textTertiary,
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-}
+// Settings rows + sign-out button moved to SettingsScreen
+// (lib/features/settings/presentation/screens/settings_screen.dart).
