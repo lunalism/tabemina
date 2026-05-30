@@ -24,6 +24,10 @@ class PhotoUploadManager {
   /// Storage only when the edit is saved (so cancelling the edit is safe).
   final List<String> _removedExistingUrls = [];
 
+  /// Storage object paths for those removed existing photos, when known
+  /// (reviews saved with path tracking). Preferred over URL-based deletion.
+  final List<String> _removedExistingStoragePaths = [];
+
   final ValueNotifier<List<PhotoUploadState>> photosNotifier =
       ValueNotifier(const []);
 
@@ -62,20 +66,42 @@ class PhotoUploadManager {
       .map((p) => p.downloadUrl!)
       .toList();
 
+  /// Storage object paths for the completed photos that have one (new
+  /// uploads always do; existing photos do when the review was saved with
+  /// path tracking). Persisted on the review doc so the blobs can be
+  /// deleted later.
+  List<String> get completedStoragePaths => _photos
+      .where((p) =>
+          p.status == PhotoUploadStatus.completed && p.storagePath != null)
+      .map((p) => p.storagePath!)
+      .toList();
+
   /// Existing-photo URLs the user removed during this edit session.
   List<String> get removedExistingUrls => List.unmodifiable(_removedExistingUrls);
+
+  /// Storage paths for removed existing photos that had one tracked.
+  List<String> get removedExistingStoragePaths =>
+      List.unmodifiable(_removedExistingStoragePaths);
 
   // ---- Mutations -----------------------------------------------------------
 
   /// Seed the manager with an edited review's existing photos. They show as
-  /// completed immediately and are never re-uploaded.
-  void loadExistingPhotos(List<String> existingUrls) {
+  /// completed immediately and are never re-uploaded. [existingStoragePaths]
+  /// (parallel to [existingUrls], when available) lets a later removal delete
+  /// the exact blob; older reviews without stored paths fall back to
+  /// URL-based deletion.
+  void loadExistingPhotos(
+    List<String> existingUrls, [
+    List<String> existingStoragePaths = const [],
+  ]) {
     for (var i = 0; i < existingUrls.length; i++) {
       _photos.add(PhotoUploadState(
         localId: 'existing_$i',
         originalFile: File(''),
         status: PhotoUploadStatus.completed,
         downloadUrl: existingUrls[i],
+        storagePath:
+            i < existingStoragePaths.length ? existingStoragePaths[i] : null,
         uploadProgress: 1.0,
         isExisting: true,
       ));
@@ -148,6 +174,9 @@ class PhotoUploadManager {
       if (photo.downloadUrl != null) {
         _removedExistingUrls.add(photo.downloadUrl!);
       }
+      if (photo.storagePath != null) {
+        _removedExistingStoragePaths.add(photo.storagePath!);
+      }
     } else {
       if (photo.storagePath != null) {
         _storage.ref(photo.storagePath!).delete().catchError((_) {});
@@ -183,17 +212,13 @@ class PhotoUploadManager {
     }
   }
 
-  /// Delete the removed-existing photos from Storage. Call after a
-  /// successful edit save.
+  /// Clear the removed-existing tracking after a successful edit save. The
+  /// actual Storage deletes are performed by
+  /// `ReviewRepository.updateReview` (by path, with a URL fallback), so this
+  /// just drops the now-committed bookkeeping.
   Future<void> commitRemovals() async {
-    for (final url in _removedExistingUrls) {
-      try {
-        await _storage.refFromURL(url).delete();
-      } on FirebaseException {
-        // Already gone / no permission — ignore.
-      }
-    }
     _removedExistingUrls.clear();
+    _removedExistingStoragePaths.clear();
   }
 
   /// Abandon: delete every uploaded (non-existing) photo from Storage and

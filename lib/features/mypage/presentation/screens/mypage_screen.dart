@@ -115,6 +115,10 @@ class _MyPageScreenState extends ConsumerState<MyPageScreen> {
   }
 
   Future<void> _signOut(BuildContext context, MyPageLabels labels) async {
+    // Drafts are per-account — drop the in-progress draft so it doesn't bleed
+    // into the next user's session.
+    await ref.read(draftStorageServiceProvider).clearDraft();
+    ref.invalidate(hasDraftProvider);
     await ref.read(authRepositoryProvider).signOut();
     if (!context.mounted) return;
     showTabeminaSnackbar(context, message: labels.signedOutSnack);
@@ -267,8 +271,13 @@ class _MyReviewsTab extends ConsumerWidget {
       ),
       data: (reviews) {
         if (reviews.isEmpty) {
+          final hasDraft = ref.watch(hasDraftProvider).maybeWhen(
+                data: (v) => v,
+                orElse: () => false,
+              );
           return ReviewsEmptyState(
             labels: labels,
+            hasDraft: hasDraft,
             onWriteReview: () => context.push(AppRoutes.writeReview),
           );
         }

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -27,6 +28,7 @@ import '../widgets/post_button_bar.dart';
 import '../widgets/rating_section.dart';
 import '../widgets/restaurant_mini_card.dart';
 import '../widgets/restaurant_search_select.dart';
+import '../widgets/restore_draft_dialog.dart';
 import '../widgets/review_top_bar.dart';
 import '../widgets/success_overlay.dart';
 import '../widgets/tag_section.dart';
@@ -96,6 +98,14 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
   bool _posting = false;
   final ImagePicker _picker = ImagePicker();
 
+  // Draft auto-save: discrete actions (rating/tags/photos/restaurant) save
+  // immediately; comment typing is debounced 2s after the last keystroke.
+  // Edit mode bypasses the whole draft system.
+  Timer? _commentDebounce;
+  // Photo count at the last draft save — the photos notifier also fires on
+  // upload-progress ticks, so we only re-save when the count actually moves.
+  int _draftPhotoCount = 0;
+
   bool get _isEdit => widget.existingReview != null;
 
   @override
@@ -107,7 +117,10 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
         placeId: review.placeId,
         name: review.placeName,
       );
-      _uploadManager.loadExistingPhotos(review.photoUrls);
+      _uploadManager.loadExistingPhotos(
+        review.photoUrls,
+        review.photoStoragePaths,
+      );
       _rating = review.rating.round();
       _tagKeys
         ..addAll(review.moodTags)
@@ -118,6 +131,12 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
     }
     _comment.addListener(_onChanged);
     _uploadManager.photosNotifier.addListener(_onChanged);
+    // Draft is for NEW reviews only — never auto-save or restore in edit mode.
+    if (!_isEdit) {
+      _comment.addListener(_onCommentChangedForDraft);
+      _uploadManager.photosNotifier.addListener(_onPhotosChangedForDraft);
+      WidgetsBinding.instance.addPostFrameCallback((_) => _maybeRestoreDraft());
+    }
   }
 
   void _onChanged() {
@@ -126,10 +145,156 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
 
   @override
   void dispose() {
+    _commentDebounce?.cancel();
     _comment.dispose();
     _uploadManager.photosNotifier.removeListener(_onChanged);
+    if (!_isEdit) {
+      _uploadManager.photosNotifier.removeListener(_onPhotosChangedForDraft);
+    }
     _uploadManager.dispose();
     super.dispose();
+  }
+
+  // ---- Draft auto-save -----------------------------------------------------
+
+  /// Snapshot the current form into a [ReviewDraft]. Splits the combined tag
+  /// set back into mood keys + a single price key, and captures the LOCAL
+  /// paths of newly-picked photos (existing edit-mode photos are excluded —
+  /// but this only runs in create mode anyway).
+  ReviewDraft _buildDraft() {
+    final mood = <String>[];
+    String? price;
+    for (final key in _tagKeys) {
+      final def = kAllTags.firstWhere(
+        (t) => t.key == key,
+        orElse: () =>
+            const TagDefinition(key: '', category: TagCategory.mood),
+      );
+      if (def.key.isEmpty) continue;
+      switch (def.category) {
+        case TagCategory.mood:
+          mood.add(def.key);
+        case TagCategory.price:
+          price = def.key;
+      }
+    }
+    final localPaths = _uploadManager.photosNotifier.value
+        .where((p) => !p.isExisting)
+        .map((p) => p.originalFile.path)
+        .where((p) => p.isNotEmpty)
+        .toList();
+    return ReviewDraft(
+      placeId: _restaurant?.placeId,
+      placeName: _restaurant?.name,
+      placePhotoUrl: _restaurant?.photoUrl,
+      placeType: _restaurant?.primaryType,
+      rating: _rating > 0 ? _rating.toDouble() : null,
+      moodTags: mood,
+      priceTag: price,
+      comment: _comment.text.isEmpty ? null : _comment.text,
+      localPhotoPaths: localPaths,
+      savedAt: DateTime.now(),
+    );
+  }
+
+  /// Persist the current form as a draft now. No-op in edit mode or when the
+  /// form is completely empty (nothing worth saving).
+  void _saveDraftNow() {
+    if (_isEdit || !_hasContent) return;
+    ref.read(draftStorageServiceProvider).saveDraft(_buildDraft());
+    ref.invalidate(hasDraftProvider);
+  }
+
+  void _onCommentChangedForDraft() {
+    if (_isEdit) return;
+    _commentDebounce?.cancel();
+    _commentDebounce = Timer(const Duration(seconds: 2), () {
+      if (mounted) _saveDraftNow();
+    });
+  }
+
+  void _onPhotosChangedForDraft() {
+    if (_isEdit) return;
+    final count = _uploadManager.count;
+    if (count == _draftPhotoCount) return; // progress tick, not add/remove
+    _draftPhotoCount = count;
+    _saveDraftNow();
+  }
+
+  Future<void> _manualSaveDraft() async {
+    _commentDebounce?.cancel();
+    _saveDraftNow();
+    if (!mounted) return;
+    final lang = ref.read(appLocaleProvider).languageCode;
+    showTabeminaSnackbar(context, message: _Labels.of(lang).draftSaved);
+  }
+
+  // ---- Draft restoration ---------------------------------------------------
+
+  Future<void> _maybeRestoreDraft() async {
+    if (_isEdit || !mounted) return;
+    final service = ref.read(draftStorageServiceProvider);
+    final draft = await service.loadDraft();
+    if (draft == null || draft.isEmpty || !mounted) return;
+    final lang = ref.read(appLocaleProvider).languageCode;
+    final l = _Labels.of(lang);
+    final choice = await RestoreDraftDialog.show(
+      context,
+      title: l.restoreDraft,
+      body: l.restoreDraftMessage,
+      savedAtLabel: l.draftSavedAt(_relativeTime(draft.savedAt, l)),
+      restoreLabel: l.restore,
+      discardLabel: l.discardYes,
+    );
+    if (!mounted) return;
+    if (choice == true) {
+      await _applyDraft(draft);
+    } else if (choice == false) {
+      await service.clearDraft();
+      ref.invalidate(hasDraftProvider);
+    }
+  }
+
+  /// Load a restored draft into the form. Photos are re-picked from their
+  /// local paths and re-uploaded; paths whose files no longer exist on the
+  /// device are skipped silently.
+  Future<void> _applyDraft(ReviewDraft draft) async {
+    final userId = ref.read(currentUserProvider)?.uid;
+    setState(() {
+      if (draft.placeId != null && draft.placeName != null) {
+        _restaurant = ReviewRestaurant(
+          placeId: draft.placeId!,
+          name: draft.placeName!,
+          primaryType: draft.placeType,
+          photoUrl: draft.placePhotoUrl,
+        );
+      }
+      _rating = draft.rating?.round() ?? 0;
+      _tagKeys
+        ..clear()
+        ..addAll(draft.allTagKeys);
+      _comment.text = draft.comment ?? '';
+    });
+    // Re-process + re-upload any photos whose local files still exist.
+    if (userId != null) {
+      for (final path in draft.localPhotoPaths) {
+        final file = File(path);
+        if (file.existsSync()) {
+          _uploadManager.addPhoto(file, userId);
+        }
+      }
+    }
+    // Re-save so the draft reflects only the photos that actually restored.
+    _saveDraftNow();
+  }
+
+  /// Localized "x minutes ago"-style label for the draft's save time.
+  String _relativeTime(DateTime savedAt, _Labels l) {
+    final diff = DateTime.now().difference(savedAt);
+    if (diff.inMinutes < 1) return l.justNow;
+    if (diff.inMinutes < 60) return l.minutesAgo(diff.inMinutes);
+    if (diff.inHours < 24) return l.hoursAgo(diff.inHours);
+    return l.daysAgo(diff.inDays);
   }
 
   int get _photoCount => _uploadManager.count;
@@ -168,6 +333,11 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
     if (discard == true && mounted) {
       // Clean up any pre-uploaded photos from Storage before leaving.
       await _uploadManager.cancelAll();
+      // Abandoning the form abandons the draft too (create mode only).
+      if (!_isEdit) {
+        await ref.read(draftStorageServiceProvider).clearDraft();
+        ref.invalidate(hasDraftProvider);
+      }
       if (mounted) context.pop();
     }
   }
@@ -240,6 +410,7 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
         _tagKeys.add(key);
       }
     });
+    _saveDraftNow();
   }
 
   Future<void> _post() async {
@@ -277,7 +448,10 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
 
     final repo = ref.read(reviewRepositoryProvider);
     // Photos are already uploaded by the manager — submit is just a write.
+    // The parallel storage paths are persisted so the blobs can be deleted
+    // when the review is later removed.
     final photoUrls = _uploadManager.completedUrls;
+    final photoStoragePaths = _uploadManager.completedStoragePaths;
 
     try {
       if (_isEdit) {
@@ -301,6 +475,7 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
           moodTags: moodTags,
           priceTags: priceTags,
           photoUrls: photoUrls,
+          photoStoragePaths: photoStoragePaths,
           language: original.language,
           createdAt: original.createdAt,
           updatedAt: original.updatedAt,
@@ -308,7 +483,9 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
         await repo.updateReview(
           updated,
           photoUrls,
+          photoStoragePaths,
           _uploadManager.removedExistingUrls,
+          _uploadManager.removedExistingStoragePaths,
         );
         await _uploadManager.commitRemovals();
       } else {
@@ -328,7 +505,10 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
           priceTags: priceTags,
           language: lang,
         );
-        await repo.submitReview(draft, photoUrls);
+        await repo.submitReview(draft, photoUrls, photoStoragePaths);
+        // Review is live — the in-progress draft has served its purpose.
+        await ref.read(draftStorageServiceProvider).clearDraft();
+        ref.invalidate(hasDraftProvider);
       }
 
       // Refresh the home feed's latest reviews + the user's grid. The
@@ -404,6 +584,8 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
           title: _isEdit ? l.editTitle : l.screenTitle,
           draftLabel: l.draft,
           onClose: _onClose,
+          // Hidden in edit mode and when the form is empty (nothing to save).
+          onDraft: (_isEdit || !_hasContent) ? null : _manualSaveDraft,
         ),
       bottomNavigationBar: Column(
         mainAxisSize: MainAxisSize.min,
@@ -444,11 +626,17 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
                 // different restaurant.
                 onChange: _isEdit
                     ? null
-                    : () => setState(() => _restaurant = null),
+                    : () {
+                        setState(() => _restaurant = null);
+                        _saveDraftNow();
+                      },
               )
             else
               RestaurantSearchSelect(
-                onSelected: (r) => setState(() => _restaurant = r),
+                onSelected: (r) {
+                  setState(() => _restaurant = r);
+                  _saveDraftNow();
+                },
                 l: RestaurantSearchLabels(
                   placeholder: l.searchPlaceholder,
                   emptyHint: l.searchEmpty,
@@ -472,7 +660,10 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
             ),
             RatingSection(
               rating: _rating,
-              onChanged: (v) => setState(() => _rating = v),
+              onChanged: (v) {
+                setState(() => _rating = v);
+                _saveDraftNow();
+              },
               l: RatingSectionLabels(
                 title: l.rating,
                 requiredBadge: l.requiredBadge,
@@ -607,6 +798,15 @@ class _Labels {
     required this.searchEmpty,
     required this.searchNoResults,
     required this.searchError,
+    required this.draftSaved,
+    required this.restoreDraft,
+    required this.restoreDraftMessage,
+    required this.restore,
+    required this.draftSavedAt,
+    required this.justNow,
+    required this.minutesAgo,
+    required this.hoursAgo,
+    required this.daysAgo,
   });
 
   final String screenTitle;
@@ -651,6 +851,15 @@ class _Labels {
   final String searchEmpty;
   final String searchNoResults;
   final String searchError;
+  final String draftSaved;
+  final String restoreDraft;
+  final String restoreDraftMessage;
+  final String restore;
+  final String Function(String relativeTime) draftSavedAt;
+  final String justNow;
+  final String Function(int n) minutesAgo;
+  final String Function(int n) hoursAgo;
+  final String Function(int n) daysAgo;
 
   static _Labels of(String code) {
     switch (code) {
@@ -715,6 +924,16 @@ class _Labels {
     searchEmpty: 'Type a name to search for restaurants.',
     searchNoResults: 'No restaurants found.',
     searchError: "Couldn't load search results. Try again.",
+    draftSaved: 'Draft saved',
+    restoreDraft: 'Restore draft?',
+    restoreDraftMessage:
+        'You have an unfinished review. Would you like to continue?',
+    restore: 'Restore',
+    draftSavedAt: (t) => 'Saved $t',
+    justNow: 'just now',
+    minutesAgo: (n) => n == 1 ? '1 minute ago' : '$n minutes ago',
+    hoursAgo: (n) => n == 1 ? '1 hour ago' : '$n hours ago',
+    daysAgo: (n) => n == 1 ? '1 day ago' : '$n days ago',
   );
 
   static final _ja = _Labels._(
@@ -766,6 +985,15 @@ class _Labels {
     searchEmpty: '店名を入力して検索してください。',
     searchNoResults: 'レストランが見つかりませんでした。',
     searchError: '検索結果を読み込めませんでした。もう一度お試しください。',
+    draftSaved: '下書きを保存しました',
+    restoreDraft: '下書きを復元しますか？',
+    restoreDraftMessage: '作成中のレビューがあります。続けますか？',
+    restore: '復元',
+    draftSavedAt: (t) => '$t保存',
+    justNow: 'たった今',
+    minutesAgo: (n) => '$n分前',
+    hoursAgo: (n) => '$n時間前',
+    daysAgo: (n) => '$n日前',
   );
 
   static final _ko = _Labels._(
@@ -817,5 +1045,14 @@ class _Labels {
     searchEmpty: '식당 이름을 입력해 검색하세요.',
     searchNoResults: '검색 결과가 없습니다.',
     searchError: '검색 결과를 불러올 수 없습니다. 다시 시도해 주세요.',
+    draftSaved: '임시저장되었습니다',
+    restoreDraft: '임시저장을 복원하시겠습니까?',
+    restoreDraftMessage: '작성 중인 리뷰가 있습니다. 이어서 작성하시겠습니까?',
+    restore: '복원',
+    draftSavedAt: (t) => '$t 저장됨',
+    justNow: '방금 전',
+    minutesAgo: (n) => '$n분 전',
+    hoursAgo: (n) => '$n시간 전',
+    daysAgo: (n) => '$n일 전',
   );
 }

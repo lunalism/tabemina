@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:flutter/foundation.dart';
 
 import '../../domain/entities/review_entity.dart';
 import '../../domain/repositories/review_repository.dart';
@@ -8,8 +9,11 @@ import '../../domain/repositories/review_repository.dart';
 ///
 /// Photos are pre-uploaded to Storage by the write-review flow (see
 /// PhotoUploadManager), so submit/update are pure Firestore writes that
-/// just persist the already-resolved photo URLs. Deleting a review still
-/// clears its Storage folder.
+/// persist the already-resolved photo URLs alongside their Storage object
+/// paths. The stored paths let [deleteReview] remove the exact blobs — the
+/// pre-upload refactor moved photos to `reviews/{userId}/{localId}.jpg`, a
+/// prefix shared across a user's reviews, so the old folder-wide delete no
+/// longer works.
 class FirebaseReviewRepository implements ReviewRepository {
   FirebaseReviewRepository({
     FirebaseFirestore? firestore,
@@ -27,6 +31,7 @@ class FirebaseReviewRepository implements ReviewRepository {
   Future<ReviewEntity> submitReview(
     ReviewDraftData draft,
     List<String> photoUrls,
+    List<String> photoStoragePaths,
   ) async {
     final docRef = _reviews.doc();
     final reviewId = docRef.id;
@@ -46,6 +51,7 @@ class FirebaseReviewRepository implements ReviewRepository {
       'moodTags': draft.moodTags,
       'priceTags': draft.priceTags,
       'photoUrls': photoUrls,
+      'photoStoragePaths': photoStoragePaths,
       'language': draft.language,
       'createdAt': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
@@ -67,6 +73,7 @@ class FirebaseReviewRepository implements ReviewRepository {
       moodTags: draft.moodTags,
       priceTags: draft.priceTags,
       photoUrls: photoUrls,
+      photoStoragePaths: photoStoragePaths,
       language: draft.language,
       createdAt: now,
       updatedAt: now,
@@ -77,16 +84,30 @@ class FirebaseReviewRepository implements ReviewRepository {
   Future<ReviewEntity> updateReview(
     ReviewEntity review,
     List<String> photoUrls,
+    List<String> photoStoragePaths,
     List<String> removedPhotoUrls,
+    List<String> removedStoragePaths,
   ) async {
     // Delete removed photos from Storage (best-effort — a failed delete
     // leaves an orphan blob but doesn't block the edit). New photos are
     // already uploaded by the pre-upload flow, so [photoUrls] is final.
+    //
+    // Prefer deleting by Storage path (exact ref, no URL parsing). Fall back
+    // to refFromURL for photos that predate path tracking, where the path
+    // isn't known. Both are guarded — a removed photo carried in both lists
+    // simply 404s on the second attempt, which we ignore.
+    for (final path in removedStoragePaths) {
+      try {
+        await _storage.ref(path).delete();
+      } on FirebaseException {
+        // Already gone / no permission — ignore.
+      }
+    }
     for (final url in removedPhotoUrls) {
       try {
         await _storage.refFromURL(url).delete();
       } on FirebaseException {
-        // Already gone / no permission — ignore.
+        // Already gone (path delete above handled it) / no permission.
       }
     }
 
@@ -96,6 +117,7 @@ class FirebaseReviewRepository implements ReviewRepository {
       'moodTags': review.moodTags,
       'priceTags': review.priceTags,
       'photoUrls': photoUrls,
+      'photoStoragePaths': photoStoragePaths,
       'updatedAt': FieldValue.serverTimestamp(),
     });
 
@@ -114,6 +136,7 @@ class FirebaseReviewRepository implements ReviewRepository {
       moodTags: review.moodTags,
       priceTags: review.priceTags,
       photoUrls: photoUrls,
+      photoStoragePaths: photoStoragePaths,
       language: review.language,
       createdAt: review.createdAt,
       updatedAt: DateTime.now(),
@@ -189,20 +212,43 @@ class FirebaseReviewRepository implements ReviewRepository {
 
   @override
   Future<void> deleteReview(String reviewId) async {
-    // Delete the document first — even if Storage delete fails, the orphan
-    // blobs won't be referenced anywhere. Doing it the other way risks
-    // showing a broken card if the Storage half succeeds but Firestore
-    // fails.
-    await _reviews.doc(reviewId).delete();
-    final folder = _storage.ref('reviews/$reviewId');
-    try {
-      final listing = await folder.listAll();
-      await Future.wait(listing.items.map((r) => r.delete()));
-    } on FirebaseException {
-      // No-op — the folder may not exist (review had no photos), or the
-      // user lacks delete permission for an older review. Either way the
-      // user already sees the review as gone.
+    // Read the doc first to recover the exact Storage paths — the
+    // pre-upload layout (`reviews/{userId}/{localId}.jpg`) shares a prefix
+    // across a user's reviews, so there's no per-review folder to wipe.
+    final docRef = _reviews.doc(reviewId);
+    final snap = await docRef.get();
+    final data = snap.data();
+
+    if (data != null) {
+      final storagePaths = _stringList(data['photoStoragePaths']);
+      if (storagePaths.isNotEmpty) {
+        for (final path in storagePaths) {
+          try {
+            await _storage.ref(path).delete();
+          } catch (e) {
+            // Photo may already be gone — ignore so the doc still deletes.
+            debugPrint('Failed to delete photo at $path: $e');
+          }
+        }
+      } else {
+        // Backwards compatibility: reviews created before path tracking
+        // used the old `reviews/{reviewId}/` folder layout. Try the
+        // folder-wide cleanup; old blobs may already be orphaned, which is
+        // acceptable.
+        try {
+          final listing = await _storage.ref('reviews/$reviewId').listAll();
+          for (final item in listing.items) {
+            await item.delete();
+          }
+        } catch (e) {
+          debugPrint('Old-style photo cleanup failed: $e');
+        }
+      }
     }
+
+    // Delete the document last — if a Storage delete throws above it's
+    // swallowed, so we always reach here and the card disappears.
+    await docRef.delete();
   }
 
   ReviewEntity _fromDoc(String docId, Map<String, dynamic> data) {
@@ -221,6 +267,7 @@ class FirebaseReviewRepository implements ReviewRepository {
       moodTags: _stringList(data['moodTags']),
       priceTags: _stringList(data['priceTags']),
       photoUrls: _stringList(data['photoUrls']),
+      photoStoragePaths: _stringList(data['photoStoragePaths']),
       language: data['language'] as String? ?? 'en',
       createdAt: _timestampOrNow(data['createdAt']),
       updatedAt: _timestampOrNow(data['updatedAt']),

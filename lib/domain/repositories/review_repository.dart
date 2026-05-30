@@ -43,21 +43,27 @@ class ReviewDraftData {
 abstract class ReviewRepository {
   /// Write the review document with already-uploaded [photoUrls]. Photos are
   /// pre-uploaded to Storage by the write-review flow, so this is just a
-  /// Firestore write. Returns the persisted entity (with [reviewId] and
-  /// timestamps).
+  /// Firestore write. [photoStoragePaths] are the Storage object paths for
+  /// those URLs, persisted so the photos can be deleted later. Returns the
+  /// persisted entity (with [reviewId] and timestamps).
   Future<ReviewEntity> submitReview(
     ReviewDraftData draft,
     List<String> photoUrls,
+    List<String> photoStoragePaths,
   );
 
   /// Edit an existing review. [photoUrls] is the final ordered list (kept
-  /// existing + newly pre-uploaded); [removedPhotoUrls] are deleted from
-  /// Storage. `createdAt` and `userId` are preserved; `updatedAt` is
-  /// refreshed. Returns the updated entity.
+  /// existing + newly pre-uploaded), with [photoStoragePaths] their Storage
+  /// object paths. [removedStoragePaths] (preferred) and [removedPhotoUrls]
+  /// (fallback for older reviews lacking stored paths) identify photos to
+  /// delete from Storage. `createdAt` and `userId` are preserved;
+  /// `updatedAt` is refreshed. Returns the updated entity.
   Future<ReviewEntity> updateReview(
     ReviewEntity review,
     List<String> photoUrls,
+    List<String> photoStoragePaths,
     List<String> removedPhotoUrls,
+    List<String> removedStoragePaths,
   );
 
   Future<List<ReviewEntity>> getReviewsForPlace(String placeId);

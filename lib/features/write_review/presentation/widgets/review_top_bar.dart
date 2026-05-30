@@ -7,20 +7,26 @@ import '../../../../core/constants/app_constants.dart';
 ///
 /// The back button delegates the discard-confirmation decision to the
 /// parent so a draft check can live in the screen state. The "Draft" link
-/// is a stub until the persistence layer lands. We use the iOS-style chevron
-/// because write-review is now a push route (not a modal), and the back
-/// arrow matches the swipe-back gesture's mental model.
+/// manually saves the form as a draft via [onDraft]; it's hidden entirely
+/// when [onDraft] is null (edit mode, or an empty form with nothing to
+/// save). We use the iOS-style chevron because write-review is now a push
+/// route (not a modal), and the back arrow matches the swipe-back gesture's
+/// mental model.
 class ReviewTopBar extends StatelessWidget implements PreferredSizeWidget {
   const ReviewTopBar({
     super.key,
     required this.title,
     required this.draftLabel,
     required this.onClose,
+    this.onDraft,
   });
 
   final String title;
   final String draftLabel;
   final VoidCallback onClose;
+
+  /// Manual "임시저장" save. Null hides the button (edit mode / empty form).
+  final VoidCallback? onDraft;
 
   static const double _height = 48;
 
@@ -65,18 +71,23 @@ class ReviewTopBar extends StatelessWidget implements PreferredSizeWidget {
                     ),
                   ),
                 ),
-                TextButton(
-                  onPressed: () {},
-                  child: Text(
-                    draftLabel,
-                    style: TextStyle(
-                      fontFamily: 'Pretendard',
-                      fontSize: 13,
-                      fontWeight: FontWeight.w500,
-                      color: c.primary,
+                if (onDraft != null)
+                  TextButton(
+                    onPressed: onDraft,
+                    child: Text(
+                      draftLabel,
+                      style: TextStyle(
+                        fontFamily: 'Pretendard',
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                        color: c.primary,
+                      ),
                     ),
-                  ),
-                ),
+                  )
+                else
+                  // Keep the title centered when the button is hidden by
+                  // balancing the leading back-arrow's width.
+                  const SizedBox(width: 48),
                 const SizedBox(width: AppConstants.spaceXs),
               ],
             ),

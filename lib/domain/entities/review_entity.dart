@@ -25,6 +25,7 @@ class ReviewEntity {
     this.placeAddress,
     this.placeLat,
     this.placeLng,
+    this.photoStoragePaths = const [],
   });
 
   final String reviewId;
@@ -41,6 +42,12 @@ class ReviewEntity {
   final List<String> moodTags;
   final List<String> priceTags;
   final List<String> photoUrls;
+
+  /// Firebase Storage object paths for [photoUrls], persisted so a delete can
+  /// remove the exact blobs. Empty for reviews created before storage-path
+  /// tracking landed (their photos may orphan on delete — see
+  /// FirebaseReviewRepository.deleteReview's fallback).
+  final List<String> photoStoragePaths;
   final String language;
   final DateTime createdAt;
   final DateTime updatedAt;

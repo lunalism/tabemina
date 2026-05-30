@@ -10,10 +10,16 @@ class ReviewsEmptyState extends StatelessWidget {
     super.key,
     required this.labels,
     required this.onWriteReview,
+    this.hasDraft = false,
   });
 
   final MyPageLabels labels;
   final VoidCallback onWriteReview;
+
+  /// When true, a subtle "draft in progress" hint renders below the CTA.
+  /// Tapping the CTA still routes to write-review, which shows the restore
+  /// dialog — the hint is informational only.
+  final bool hasDraft;
 
   @override
   Widget build(BuildContext context) {
@@ -80,6 +86,18 @@ class ReviewsEmptyState extends StatelessWidget {
               ),
             ),
           ),
+          if (hasDraft) ...[
+            const SizedBox(height: 10),
+            Text(
+              labels.draftInProgress,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontFamily: 'Pretendard',
+                fontSize: 12,
+                color: c.textSecondary,
+              ),
+            ),
+          ],
         ],
       ),
     );

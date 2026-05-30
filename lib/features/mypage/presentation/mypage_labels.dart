@@ -37,6 +37,7 @@ class MyPageLabels {
     required this.delete,
     required this.reviewDeleted,
     required this.reviewDeleteFailed,
+    required this.draftInProgress,
   });
 
   final String guestTitle;
@@ -74,6 +75,9 @@ class MyPageLabels {
   final String delete;
   final String reviewDeleted;
   final String reviewDeleteFailed;
+
+  // Draft hint on the reviews empty state.
+  final String draftInProgress;
 
   static MyPageLabels of(String lang) {
     switch (lang) {
@@ -120,6 +124,7 @@ class MyPageLabels {
     delete: 'Delete',
     reviewDeleted: 'Review deleted',
     reviewDeleteFailed: 'Failed to delete. Please try again.',
+    draftInProgress: 'You have a draft in progress',
   );
 
   static const _ja = MyPageLabels(
@@ -154,6 +159,7 @@ class MyPageLabels {
     delete: '削除',
     reviewDeleted: 'レビューを削除しました',
     reviewDeleteFailed: '削除に失敗しました。もう一度お試しください。',
+    draftInProgress: '下書きがあります',
   );
 
   static const _ko = MyPageLabels(
@@ -188,5 +194,6 @@ class MyPageLabels {
     delete: '삭제',
     reviewDeleted: '리뷰가 삭제되었습니다',
     reviewDeleteFailed: '삭제에 실패했습니다. 다시 시도해주세요.',
+    draftInProgress: '작성 중인 임시저장이 있습니다',
   );
 }

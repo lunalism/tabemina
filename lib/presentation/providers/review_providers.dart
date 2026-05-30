@@ -1,12 +1,26 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/providers/app_locale_provider.dart';
 import '../../data/repositories/firebase_review_repository.dart';
 import '../../domain/entities/review_entity.dart';
 import '../../domain/repositories/review_repository.dart';
+import '../../features/write_review/data/services/draft_storage_service.dart';
 import 'auth_providers.dart';
 
 final reviewRepositoryProvider = Provider<ReviewRepository>((ref) {
   return FirebaseReviewRepository();
+});
+
+/// SharedPreferences-backed store for the single in-progress review draft.
+final draftStorageServiceProvider = Provider<DraftStorageService>((ref) {
+  return DraftStorageService(ref.read(sharedPreferencesProvider));
+});
+
+/// Whether a saved review draft currently exists — drives the "draft in
+/// progress" hint on the My Page reviews empty state. Re-runs when
+/// invalidated (e.g. after the write-review screen saves or clears a draft).
+final hasDraftProvider = FutureProvider<bool>((ref) {
+  return ref.read(draftStorageServiceProvider).hasDraft();
 });
 
 /// Live reviews for one Place ID, ordered newest-first. The stream variant
