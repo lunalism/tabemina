@@ -94,6 +94,15 @@ class _MyPageScreenState extends ConsumerState<MyPageScreen> {
                 trailing: _appVersion,
                 onTap: null,
               ),
+              // Account-scoped: blocking is per-user, so only signed-in users
+              // see the entry.
+              if (user != null)
+                _SettingRow(
+                  icon: Icons.block_outlined,
+                  label: labels.blockedUsers,
+                  trailing: '',
+                  onTap: () => context.push(AppRoutes.blockedUsers),
+                ),
               if (user != null) ...[
                 const SizedBox(height: AppConstants.spaceLg),
                 Padding(

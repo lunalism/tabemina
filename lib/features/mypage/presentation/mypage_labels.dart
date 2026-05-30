@@ -39,6 +39,7 @@ class MyPageLabels {
     required this.reviewDeleteFailed,
     required this.draftInProgress,
     required this.underReview,
+    required this.blockedUsers,
   });
 
   final String guestTitle;
@@ -83,6 +84,9 @@ class MyPageLabels {
   /// Muted tag on the user's OWN review when it's been hidden by reports —
   /// shown only on My Page so they understand it was removed from listings.
   final String underReview;
+
+  /// Settings row → Blocked-users management screen.
+  final String blockedUsers;
 
   static MyPageLabels of(String lang) {
     switch (lang) {
@@ -131,6 +135,7 @@ class MyPageLabels {
     reviewDeleteFailed: 'Failed to delete. Please try again.',
     draftInProgress: 'You have a draft in progress',
     underReview: 'Under review',
+    blockedUsers: 'Blocked users',
   );
 
   static const _ja = MyPageLabels(
@@ -167,6 +172,7 @@ class MyPageLabels {
     reviewDeleteFailed: '削除に失敗しました。もう一度お試しください。',
     draftInProgress: '下書きがあります',
     underReview: '審査中',
+    blockedUsers: 'ブロックしたユーザー',
   );
 
   static const _ko = MyPageLabels(
@@ -203,5 +209,6 @@ class MyPageLabels {
     reviewDeleteFailed: '삭제에 실패했습니다. 다시 시도해주세요.',
     draftInProgress: '작성 중인 임시저장이 있습니다',
     underReview: '검토 중',
+    blockedUsers: '차단한 사용자',
   );
 }

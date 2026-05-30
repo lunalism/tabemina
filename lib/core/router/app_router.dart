@@ -2,6 +2,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../domain/entities/review_entity.dart';
+import '../../features/blocking/presentation/screens/blocked_users_screen.dart';
 import '../../features/bookmarks/presentation/screens/bookmarks_screen.dart';
 import '../../features/home/presentation/screens/home_screen.dart';
 import '../../features/mypage/presentation/screens/mypage_screen.dart';
@@ -23,6 +24,7 @@ abstract class AppRoutes {
   static const String restaurantDetail = '/restaurant';
   static const String writeReview = '/write-review';
   static const String editReview = '/edit-review';
+  static const String blockedUsers = '/settings/blocked-users';
 
   static String restaurantDetailFor(String placeId) =>
       '$restaurantDetail/$placeId';
@@ -79,6 +81,15 @@ final GoRouter appRouter = GoRouter(
               : const WriteReviewScreen(),
         );
       },
+    ),
+    // Blocked-users management (My Page → Settings). Standard iOS push so the
+    // back arrow + left-edge swipe both dismiss it.
+    GoRoute(
+      path: AppRoutes.blockedUsers,
+      pageBuilder: (context, state) => CupertinoPage<void>(
+        key: state.pageKey,
+        child: const BlockedUsersScreen(),
+      ),
     ),
     // Restaurant detail. CupertinoPage gives the native iOS slide-from-right
     // push and — critically — the interactive swipe-back gesture from the

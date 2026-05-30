@@ -24,7 +24,7 @@ class LatestReviewsSection extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final lang = ref.watch(appLocaleProvider).languageCode;
     final labels = _Labels.of(lang);
-    final async = ref.watch(latestReviewsProvider);
+    final async = ref.watch(visibleLatestReviewsProvider);
     return Padding(
       padding: const EdgeInsets.only(top: AppConstants.space2xl),
       child: Column(

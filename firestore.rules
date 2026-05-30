@@ -62,5 +62,20 @@ service cloud.firestore {
       allow read: if request.auth != null
         && (resource == null || resource.data.reporterUserId == request.auth.uid);
     }
+
+    // Blocks (B-2-2). One-directional and PRIVATE to the blocker: nobody can
+    // see who blocked them. Deterministic id {blockerUid}_{blockedUid} makes
+    // re-block an idempotent set() — no pre-read, so no resource==null guard
+    // is needed here (unlike reports). The list query
+    // blocks.where('blockerUserId','==',uid) is covered by the read rule.
+    match /blocks/{blockId} {
+      allow create: if request.auth != null
+        && request.resource.data.blockerUserId == request.auth.uid;
+      allow read: if request.auth != null
+        && resource.data.blockerUserId == request.auth.uid;
+      allow delete: if request.auth != null
+        && resource.data.blockerUserId == request.auth.uid;
+      allow update: if false;
+    }
   }
 }

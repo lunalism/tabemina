@@ -6,6 +6,7 @@ import '../../domain/entities/review_entity.dart';
 import '../../domain/repositories/review_repository.dart';
 import '../../features/write_review/data/services/draft_storage_service.dart';
 import 'auth_providers.dart';
+import 'block_providers.dart';
 
 final reviewRepositoryProvider = Provider<ReviewRepository>((ref) {
   return FirebaseReviewRepository();
@@ -26,9 +27,28 @@ final hasDraftProvider = FutureProvider<bool>((ref) {
 /// Live reviews for one Place ID, ordered newest-first. The stream variant
 /// keeps the detail page in sync if the user posts a review and pops back —
 /// no manual invalidate needed.
+///
+/// This is the isHidden-filtered set (B-2-1) and is the AGGREGATION source —
+/// the review count badge and any future rating average read from here, so a
+/// blocked author's review still counts toward the restaurant. Block is
+/// personal, not a rule violation.
 final placeReviewsProvider =
     StreamProvider.family<List<ReviewEntity>, String>((ref, placeId) {
   return ref.watch(reviewRepositoryProvider).watchReviewsForPlace(placeId);
+});
+
+/// [placeReviewsProvider] with blocked authors removed — the RENDERED list for
+/// the detail page. Layered on top so aggregation stays on the unfiltered set
+/// (blocked reviews keep counting toward the average); only the blocker's
+/// visible list loses them. Reacts live to block/unblock via
+/// [blockedUserIdsProvider].
+final visiblePlaceReviewsProvider =
+    Provider.family<AsyncValue<List<ReviewEntity>>, String>((ref, placeId) {
+  final reviews = ref.watch(placeReviewsProvider(placeId));
+  final blocked = ref.watch(blockedUserIdsProvider).asData?.value ?? const {};
+  return reviews.whenData(
+    (list) => list.where((r) => !blocked.contains(r.userId)).toList(),
+  );
 });
 
 /// Reviews written by the signed-in user (My Page → Reviews). Returns an
@@ -42,6 +62,17 @@ final userReviewsProvider = FutureProvider<List<ReviewEntity>>((ref) async {
 /// 10 newest reviews across all places — Home feed's "Latest reviews".
 final latestReviewsProvider = FutureProvider<List<ReviewEntity>>((ref) {
   return ref.watch(reviewRepositoryProvider).getLatestReviews(limit: 10);
+});
+
+/// [latestReviewsProvider] with blocked authors removed — the rendered home
+/// feed. Reacts live to block/unblock via [blockedUserIdsProvider].
+final visibleLatestReviewsProvider =
+    Provider<AsyncValue<List<ReviewEntity>>>((ref) {
+  final reviews = ref.watch(latestReviewsProvider);
+  final blocked = ref.watch(blockedUserIdsProvider).asData?.value ?? const {};
+  return reviews.whenData(
+    (list) => list.where((r) => !blocked.contains(r.userId)).toList(),
+  );
 });
 
 /// Whether the signed-in user may post a new review for [placeId] right now

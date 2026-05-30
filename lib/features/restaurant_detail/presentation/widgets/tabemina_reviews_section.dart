@@ -34,7 +34,10 @@ class TabeminaReviewsSection extends ConsumerWidget {
     final c = AppColors.of(context);
     final lang = ref.watch(appLocaleProvider).languageCode;
     final labels = _Labels.of(lang);
+    // Count badge reads the aggregation source (blocked authors still count);
+    // the rendered list reads the block-filtered view.
     final async = ref.watch(placeReviewsProvider(placeId));
+    final listAsync = ref.watch(visiblePlaceReviewsProvider(placeId));
 
     return Padding(
       padding: const EdgeInsets.only(top: AppConstants.spaceXl),
@@ -89,7 +92,7 @@ class TabeminaReviewsSection extends ConsumerWidget {
             padding: const EdgeInsets.symmetric(
               horizontal: AppConstants.spaceLg,
             ),
-            child: async.when(
+            child: listAsync.when(
               loading: () => const _LoadingState(),
               error: (e, _) => errorStateView(
                 context,
