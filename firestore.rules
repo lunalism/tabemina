@@ -35,11 +35,14 @@ service cloud.firestore {
       // volume; fully closed when auto-hide moves to Cloud Functions
       // (stage 1) and clients lose write access to these fields entirely.
       // Do NOT over-engineer this now.
+      // .get(field, default) tolerates legacy docs created before B-2-1 that
+      // lack reportCount / isHidden — reading the field directly would do
+      // arithmetic on a missing value and deny the write.
       allow update: if request.auth != null
         && request.resource.data.diff(resource.data)
              .affectedKeys().hasOnly(['reportCount', 'isHidden'])
-        && request.resource.data.reportCount == resource.data.reportCount + 1
-        && (request.resource.data.isHidden == resource.data.isHidden
+        && request.resource.data.reportCount == resource.data.get('reportCount', 0) + 1
+        && (request.resource.data.isHidden == resource.data.get('isHidden', false)
              || request.resource.data.isHidden == true)
         && request.auth.uid != resource.data.userId; // can't report yourself
     }
@@ -51,8 +54,13 @@ service cloud.firestore {
       allow create: if request.auth != null
         && request.resource.data.reporterUserId == request.auth.uid;
       allow update, delete: if false;
+      // The report flow's transaction reads this doc to dedup before writing.
+      // On a first-time report the doc doesn't exist yet, so `resource` is
+      // null — guard that case or the read rule dereferences null and denies
+      // the whole transaction. Existing docs stay readable only by their
+      // own reporter.
       allow read: if request.auth != null
-        && resource.data.reporterUserId == request.auth.uid;
+        && (resource == null || resource.data.reporterUserId == request.auth.uid);
     }
   }
 }
