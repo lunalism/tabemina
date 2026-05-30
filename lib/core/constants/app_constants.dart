@@ -1,5 +1,11 @@
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
+/// Reports needed before a user review auto-hides. Stage 0 (solo dev,
+/// client-side moderation) uses 1 so a single report hides a review
+/// immediately, satisfying App Store UGC moderation at launch. Bump this
+/// when auto-hide moves to Cloud Functions (stage 1).
+const int kReportThreshold = 1;
+
 /// App-wide constants: spacing, radii, sizing, durations, and map defaults.
 class AppConstants {
   AppConstants._();

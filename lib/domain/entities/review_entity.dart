@@ -26,6 +26,8 @@ class ReviewEntity {
     this.placeLat,
     this.placeLng,
     this.photoStoragePaths = const [],
+    this.reportCount = 0,
+    this.isHidden = false,
   });
 
   final String reviewId;
@@ -51,4 +53,15 @@ class ReviewEntity {
   final String language;
   final DateTime createdAt;
   final DateTime updatedAt;
+
+  /// How many times this review has been reported. Persisted on the doc and
+  /// incremented atomically in the report transaction. Missing on older docs
+  /// (treated as 0).
+  final int reportCount;
+
+  /// Whether the review is hidden from public listings (auto-set once
+  /// [reportCount] crosses kReportThreshold). Missing on older docs (treated
+  /// as false → visible). Filtered out client-side everywhere except the
+  /// author's own My Page list, where it's shown with an "Under review" tag.
+  final bool isHidden;
 }

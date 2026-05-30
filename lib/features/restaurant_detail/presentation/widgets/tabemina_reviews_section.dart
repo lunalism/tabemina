@@ -5,6 +5,7 @@ import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/providers/app_locale_provider.dart';
 import '../../../../domain/entities/review_entity.dart';
+import '../../../../features/reporting/presentation/review_actions.dart';
 import '../../../../features/write_review/domain/models/tag_definitions.dart';
 import '../../../../presentation/providers/review_providers.dart';
 import '../../../../shared/widgets/app_error_kind.dart';
@@ -127,7 +128,10 @@ class TabeminaReviewsSection extends ConsumerWidget {
 
 /// Single review row — avatar, name, rating, tags, comment, photos, relative
 /// time. Used by [TabeminaReviewsSection].
-class TabeminaReviewCard extends StatelessWidget {
+///
+/// Long-press opens the review actions (edit/delete for your own review,
+/// Report for someone else's) via [showReviewActions].
+class TabeminaReviewCard extends ConsumerWidget {
   const TabeminaReviewCard({
     super.key,
     required this.review,
@@ -138,118 +142,123 @@ class TabeminaReviewCard extends StatelessWidget {
   final String lang;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final c = AppColors.of(context);
-    return Container(
-      margin: const EdgeInsets.only(bottom: AppConstants.spaceMd),
-      padding: const EdgeInsets.all(AppConstants.spaceMd),
-      decoration: BoxDecoration(
-        color: c.bgCard,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: c.borderPrimary, width: 0.5),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              _Avatar(
-                photoUrl: review.userPhotoUrl,
-                fallback: _initialsOf(review.userName),
-              ),
-              const SizedBox(width: AppConstants.spaceSm),
-              Expanded(
-                child: Text(
-                  review.userName,
+    return GestureDetector(
+      onLongPress: () => showReviewActions(context, ref, review),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: AppConstants.spaceMd),
+        padding: const EdgeInsets.all(AppConstants.spaceMd),
+        decoration: BoxDecoration(
+          color: c.bgCard,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: c.borderPrimary, width: 0.5),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                _Avatar(
+                  photoUrl: review.userPhotoUrl,
+                  fallback: _initialsOf(review.userName),
+                ),
+                const SizedBox(width: AppConstants.spaceSm),
+                Expanded(
+                  child: Text(
+                    review.userName,
+                    style: TextStyle(
+                      fontFamily: 'Pretendard',
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                      color: c.textPrimary,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                Text(
+                  formatRelative(review.createdAt, lang),
+                  style: TextStyle(
+                    fontFamily: 'Pretendard',
+                    fontSize: 12,
+                    color: c.textSecondary,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: AppConstants.spaceSm),
+            Row(
+              children: [
+                Icon(Icons.star_rounded, size: 14, color: c.secondary),
+                const SizedBox(width: 3),
+                Text(
+                  review.rating.toStringAsFixed(1),
                   style: TextStyle(
                     fontFamily: 'Pretendard',
                     fontSize: 13,
                     fontWeight: FontWeight.w500,
                     color: c.textPrimary,
                   ),
-                  overflow: TextOverflow.ellipsis,
                 ),
-              ),
-              Text(
-                formatRelative(review.createdAt, lang),
-                style: TextStyle(
-                  fontFamily: 'Pretendard',
-                  fontSize: 12,
-                  color: c.textSecondary,
-                ),
+              ],
+            ),
+            if (review.moodTags.isNotEmpty || review.priceTags.isNotEmpty) ...[
+              const SizedBox(height: AppConstants.spaceSm),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  for (final t in review.moodTags)
+                    _TagChip(label: tagLabel(t, lang)),
+                  for (final t in review.priceTags)
+                    _TagChip(label: tagLabel(t, lang)),
+                ],
               ),
             ],
-          ),
-          const SizedBox(height: AppConstants.spaceSm),
-          Row(
-            children: [
-              Icon(Icons.star_rounded, size: 14, color: c.secondary),
-              const SizedBox(width: 3),
+            if (review.comment.isNotEmpty) ...[
+              const SizedBox(height: AppConstants.spaceSm),
               Text(
-                review.rating.toStringAsFixed(1),
+                review.comment,
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   fontFamily: 'Pretendard',
                   fontSize: 13,
-                  fontWeight: FontWeight.w500,
                   color: c.textPrimary,
+                  height: 1.4,
                 ),
               ),
             ],
-          ),
-          if (review.moodTags.isNotEmpty || review.priceTags.isNotEmpty) ...[
-            const SizedBox(height: AppConstants.spaceSm),
-            Wrap(
-              spacing: 6,
-              runSpacing: 6,
-              children: [
-                for (final t in review.moodTags) _TagChip(label: tagLabel(t, lang)),
-                for (final t in review.priceTags) _TagChip(label: tagLabel(t, lang)),
-              ],
-            ),
-          ],
-          if (review.comment.isNotEmpty) ...[
-            const SizedBox(height: AppConstants.spaceSm),
-            Text(
-              review.comment,
-              maxLines: 3,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontFamily: 'Pretendard',
-                fontSize: 13,
-                color: c.textPrimary,
-                height: 1.4,
-              ),
-            ),
-          ],
-          if (review.photoUrls.isNotEmpty) ...[
-            const SizedBox(height: AppConstants.spaceSm),
-            SizedBox(
-              height: 72,
-              child: ListView.separated(
-                scrollDirection: Axis.horizontal,
-                itemCount: review.photoUrls.length,
-                separatorBuilder: (_, _) => const SizedBox(width: 8),
-                itemBuilder: (_, i) => ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: FadeInNetworkImage(
-                    url: review.photoUrls[i],
-                    width: 72,
-                    height: 72,
-                    errorPlaceholder: Container(
+            if (review.photoUrls.isNotEmpty) ...[
+              const SizedBox(height: AppConstants.spaceSm),
+              SizedBox(
+                height: 72,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: review.photoUrls.length,
+                  separatorBuilder: (_, _) => const SizedBox(width: 8),
+                  itemBuilder: (_, i) => ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: FadeInNetworkImage(
+                      url: review.photoUrls[i],
                       width: 72,
                       height: 72,
-                      color: c.bgSkeleton,
-                      child: Icon(
-                        Icons.broken_image_outlined,
-                        color: c.textTertiary,
+                      errorPlaceholder: Container(
+                        width: 72,
+                        height: 72,
+                        color: c.bgSkeleton,
+                        child: Icon(
+                          Icons.broken_image_outlined,
+                          color: c.textTertiary,
+                        ),
                       ),
                     ),
                   ),
                 ),
               ),
-            ),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }
@@ -275,8 +284,9 @@ class _Avatar extends StatelessWidget {
     return CircleAvatar(
       radius: 14,
       backgroundColor: c.bgSkeleton,
-      backgroundImage:
-          (photoUrl != null && photoUrl!.isNotEmpty) ? NetworkImage(photoUrl!) : null,
+      backgroundImage: (photoUrl != null && photoUrl!.isNotEmpty)
+          ? NetworkImage(photoUrl!)
+          : null,
       child: (photoUrl == null || photoUrl!.isEmpty)
           ? Text(
               fallback,

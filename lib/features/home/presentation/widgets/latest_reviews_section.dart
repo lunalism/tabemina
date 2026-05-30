@@ -7,6 +7,7 @@ import '../../../../core/constants/app_constants.dart';
 import '../../../../core/providers/app_locale_provider.dart';
 import '../../../../core/router/app_router.dart';
 import '../../../../domain/entities/review_entity.dart';
+import '../../../../features/reporting/presentation/review_actions.dart';
 import '../../../../features/restaurant_detail/presentation/widgets/tabemina_reviews_section.dart'
     show formatRelative;
 import '../../../../presentation/providers/review_providers.dart';
@@ -113,19 +114,19 @@ class _Header extends StatelessWidget {
 /// of the old ReviewCardData mock. Kept local to the section so the home
 /// feed's tile shape doesn't accidentally lock in shared with the detail
 /// card (those two surfaces drift independently over time).
-class _RealReviewCard extends StatelessWidget {
+class _RealReviewCard extends ConsumerWidget {
   const _RealReviewCard({required this.review, required this.lang});
 
   final ReviewEntity review;
   final String lang;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final c = AppColors.of(context);
     final firstLine = _firstLineOf(review.comment);
     return InkWell(
-      onTap: () =>
-          context.push(AppRoutes.restaurantDetailFor(review.placeId)),
+      onTap: () => context.push(AppRoutes.restaurantDetailFor(review.placeId)),
+      onLongPress: () => showReviewActions(context, ref, review),
       borderRadius: BorderRadius.circular(12),
       child: Container(
         decoration: BoxDecoration(
@@ -283,8 +284,9 @@ class _Avatar extends StatelessWidget {
     return CircleAvatar(
       radius: 14,
       backgroundColor: c.bgSkeleton,
-      backgroundImage:
-          (photoUrl != null && photoUrl!.isNotEmpty) ? NetworkImage(photoUrl!) : null,
+      backgroundImage: (photoUrl != null && photoUrl!.isNotEmpty)
+          ? NetworkImage(photoUrl!)
+          : null,
       child: (photoUrl == null || photoUrl!.isEmpty)
           ? Text(
               fallback,

@@ -38,6 +38,7 @@ class MyPageLabels {
     required this.reviewDeleted,
     required this.reviewDeleteFailed,
     required this.draftInProgress,
+    required this.underReview,
   });
 
   final String guestTitle;
@@ -78,6 +79,10 @@ class MyPageLabels {
 
   // Draft hint on the reviews empty state.
   final String draftInProgress;
+
+  /// Muted tag on the user's OWN review when it's been hidden by reports —
+  /// shown only on My Page so they understand it was removed from listings.
+  final String underReview;
 
   static MyPageLabels of(String lang) {
     switch (lang) {
@@ -125,6 +130,7 @@ class MyPageLabels {
     reviewDeleted: 'Review deleted',
     reviewDeleteFailed: 'Failed to delete. Please try again.',
     draftInProgress: 'You have a draft in progress',
+    underReview: 'Under review',
   );
 
   static const _ja = MyPageLabels(
@@ -160,6 +166,7 @@ class MyPageLabels {
     reviewDeleted: 'レビューを削除しました',
     reviewDeleteFailed: '削除に失敗しました。もう一度お試しください。',
     draftInProgress: '下書きがあります',
+    underReview: '審査中',
   );
 
   static const _ko = MyPageLabels(
@@ -195,5 +202,6 @@ class MyPageLabels {
     reviewDeleted: '리뷰가 삭제되었습니다',
     reviewDeleteFailed: '삭제에 실패했습니다. 다시 시도해주세요.',
     draftInProgress: '작성 중인 임시저장이 있습니다',
+    underReview: '검토 중',
   );
 }

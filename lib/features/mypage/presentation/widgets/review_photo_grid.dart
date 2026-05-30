@@ -56,8 +56,7 @@ class _ReviewCell extends ConsumerWidget {
     final c = AppColors.of(context);
     final photo = review.photoUrls.isNotEmpty ? review.photoUrls.first : null;
     return GestureDetector(
-      onTap: () =>
-          context.push(AppRoutes.restaurantDetailFor(review.placeId)),
+      onTap: () => context.push(AppRoutes.restaurantDetailFor(review.placeId)),
       onLongPress: () => _onLongPress(context, ref),
       child: Stack(
         fit: StackFit.expand,
@@ -69,6 +68,22 @@ class _ReviewCell extends ConsumerWidget {
             )
           else
             const _Placeholder(),
+          // Hidden-by-reports: dim the cell and tag it so the author knows it
+          // was removed from public listings (it still shows here, only here).
+          if (review.isHidden) ...[
+            Positioned.fill(
+              child: ColoredBox(color: Colors.black.withValues(alpha: 0.45)),
+            ),
+            Positioned(
+              left: 4,
+              top: 4,
+              child: _HiddenBadge(
+                label: MyPageLabels.of(
+                  ref.watch(appLocaleProvider).languageCode,
+                ).underReview,
+              ),
+            ),
+          ],
           Positioned(
             left: 4,
             bottom: 4,
@@ -96,8 +111,7 @@ class _ReviewCell extends ConsumerWidget {
 
   Future<void> _onLongPress(BuildContext context, WidgetRef ref) async {
     final labels = MyPageLabels.of(ref.read(appLocaleProvider).languageCode);
-    final action =
-        await ReviewActionBottomSheet.show(context, review, labels);
+    final action = await ReviewActionBottomSheet.show(context, review, labels);
     if (action == null || !context.mounted) return;
 
     switch (action) {
@@ -142,6 +156,45 @@ class _Placeholder extends StatelessWidget {
       color: c.bgSkeleton,
       alignment: Alignment.center,
       child: Icon(Icons.restaurant, size: 24, color: c.textTertiary),
+    );
+  }
+}
+
+/// Small "Under review" chip on a hidden own-review cell. Icon + label so the
+/// state reads without relying on the dimming scrim alone.
+class _HiddenBadge extends StatelessWidget {
+  const _HiddenBadge({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.55),
+        borderRadius: BorderRadius.circular(5),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(
+            Icons.visibility_off_outlined,
+            size: 10,
+            color: Colors.white,
+          ),
+          const SizedBox(width: 3),
+          Text(
+            label,
+            style: const TextStyle(
+              fontFamily: 'Pretendard',
+              fontSize: 9,
+              fontWeight: FontWeight.w600,
+              color: Colors.white,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

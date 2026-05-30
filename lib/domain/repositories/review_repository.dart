@@ -1,3 +1,4 @@
+import '../entities/report_reason.dart';
 import '../entities/review_entity.dart';
 
 /// A new review the user just composed in the write-review form. The
@@ -84,4 +85,15 @@ abstract class ReviewRepository {
   Stream<List<ReviewEntity>> watchReviewsForPlace(String placeId);
 
   Future<void> deleteReview(String reviewId);
+
+  /// Report [reviewId] by [reporterUserId] with [reason]. Runs in a single
+  /// Firestore transaction keyed on `reports/{reviewId}_{reporterUserId}`,
+  /// so a user can report a review at most once. When the report pushes the
+  /// review's reportCount to kReportThreshold the review is hidden. Returns
+  /// [ReportOutcome.alreadyReported] (a no-op) when a prior report exists.
+  Future<ReportOutcome> reportReview({
+    required String reviewId,
+    required String reporterUserId,
+    required ReportReason reason,
+  });
 }

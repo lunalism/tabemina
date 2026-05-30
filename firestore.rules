@@ -20,8 +20,39 @@ service cloud.firestore {
     match /reviews/{reviewId} {
       allow read: if true;
       allow create: if request.auth != null;
+
+      // Owner: full edit/delete of their own review.
       allow update, delete:
         if request.auth != null && request.auth.uid == resource.data.userId;
+
+      // Non-owner: may touch ONLY the moderation fields, and only to bump
+      // reportCount by exactly 1 (optionally flipping isHidden to true). This
+      // is what the client-side report flow writes inside its transaction.
+      //
+      // KNOWN STAGE-0 TRADEOFF: rules can't cheaply cross-check the
+      // reports/{reviewId}_{uid} doc in the same evaluation, so a determined
+      // user could script repeated +1 increments here. Acceptable at launch
+      // volume; fully closed when auto-hide moves to Cloud Functions
+      // (stage 1) and clients lose write access to these fields entirely.
+      // Do NOT over-engineer this now.
+      allow update: if request.auth != null
+        && request.resource.data.diff(resource.data)
+             .affectedKeys().hasOnly(['reportCount', 'isHidden'])
+        && request.resource.data.reportCount == resource.data.reportCount + 1
+        && (request.resource.data.isHidden == resource.data.isHidden
+             || request.resource.data.isHidden == true)
+        && request.auth.uid != resource.data.userId; // can't report yourself
+    }
+
+    // Content reports. Created by the reporter (as themselves) and never
+    // updated/deleted from the client — moderation happens in the Firebase
+    // Console. Reads are limited to the report's own author.
+    match /reports/{reportId} {
+      allow create: if request.auth != null
+        && request.resource.data.reporterUserId == request.auth.uid;
+      allow update, delete: if false;
+      allow read: if request.auth != null
+        && resource.data.reporterUserId == request.auth.uid;
     }
   }
 }

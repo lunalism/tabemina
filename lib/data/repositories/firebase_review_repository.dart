@@ -2,6 +2,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart';
 
+import '../../core/constants/app_constants.dart';
+import '../../domain/entities/report_reason.dart';
 import '../../domain/entities/review_entity.dart';
 import '../../domain/repositories/review_repository.dart';
 
@@ -52,6 +54,10 @@ class FirebaseReviewRepository implements ReviewRepository {
       'priceTags': draft.priceTags,
       'photoUrls': photoUrls,
       'photoStoragePaths': photoStoragePaths,
+      // Moderation fields — written explicitly so new reviews always carry
+      // them (older docs may lack them; reads default to 0 / false).
+      'reportCount': 0,
+      'isHidden': false,
       'language': draft.language,
       'createdAt': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
@@ -149,7 +155,7 @@ class FirebaseReviewRepository implements ReviewRepository {
         .where('placeId', isEqualTo: placeId)
         .orderBy('createdAt', descending: true)
         .get();
-    return snap.docs.map((d) => _fromDoc(d.id, d.data())).toList();
+    return _visible(snap.docs);
   }
 
   @override
@@ -194,11 +200,15 @@ class FirebaseReviewRepository implements ReviewRepository {
 
   @override
   Future<List<ReviewEntity>> getLatestReviews({int limit = 10}) async {
+    // Over-fetch then filter client-side so a few hidden reviews don't shrink
+    // the home feed below `limit`. Client-side filtering (not a
+    // where('isHidden', false) query) is deliberate — that query would also
+    // drop older docs that lack the field. See [_visible].
     final snap = await _reviews
         .orderBy('createdAt', descending: true)
-        .limit(limit)
+        .limit(limit * 2)
         .get();
-    return snap.docs.map((d) => _fromDoc(d.id, d.data())).toList();
+    return _visible(snap.docs).take(limit).toList();
   }
 
   @override
@@ -207,7 +217,7 @@ class FirebaseReviewRepository implements ReviewRepository {
         .where('placeId', isEqualTo: placeId)
         .orderBy('createdAt', descending: true)
         .snapshots()
-        .map((s) => s.docs.map((d) => _fromDoc(d.id, d.data())).toList());
+        .map((s) => _visible(s.docs));
   }
 
   @override
@@ -251,6 +261,69 @@ class FirebaseReviewRepository implements ReviewRepository {
     await docRef.delete();
   }
 
+  @override
+  Future<ReportOutcome> reportReview({
+    required String reviewId,
+    required String reporterUserId,
+    required ReportReason reason,
+  }) {
+    // Deterministic report doc id ({reviewId}_{uid}) guarantees one report
+    // per user per review, so reportCount can never be double-incremented by
+    // the same user. The whole thing runs in one transaction so a duplicate
+    // tap (or a race) can't slip a second increment through.
+    final reportRef =
+        _firestore.collection('reports').doc('${reviewId}_$reporterUserId');
+    final reviewRef = _reviews.doc(reviewId);
+
+    return _firestore.runTransaction<ReportOutcome>((txn) async {
+      // Firestore requires all reads before any writes.
+      final reportSnap = await txn.get(reportRef);
+      if (reportSnap.exists) {
+        // Already reported by this user — abort without touching the count.
+        return ReportOutcome.alreadyReported;
+      }
+      final reviewSnap = await txn.get(reviewRef);
+      if (!reviewSnap.exists) {
+        // Review was deleted between display and report — nothing to do.
+        return ReportOutcome.alreadyReported;
+      }
+      final data = reviewSnap.data()!;
+      final currentCount = (data['reportCount'] as num?)?.toInt() ?? 0;
+      final nextCount = currentCount + 1;
+
+      // Reporter identity lives only in the report doc (never surfaced in
+      // any UI). reportedUserId / restaurantPlaceId come from the review doc
+      // so the client can't spoof them.
+      txn.set(reportRef, {
+        'reviewId': reviewId,
+        'reportedUserId': data['userId'] ?? '',
+        'reporterUserId': reporterUserId,
+        'reason': reason.wireValue,
+        'restaurantPlaceId': data['placeId'] ?? '',
+        'status': 'pending',
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+      txn.update(reviewRef, {
+        'reportCount': nextCount,
+        if (nextCount >= kReportThreshold) 'isHidden': true,
+      });
+      return ReportOutcome.submitted;
+    });
+  }
+
+  /// Map docs to entities and drop the hidden ones. Done in Dart — NOT as a
+  /// `where('isHidden', isEqualTo: false)` query — so older docs that lack
+  /// the field (null, not false) still show. At launch volume this is cheap
+  /// and correct for mixed old/new data.
+  List<ReviewEntity> _visible(
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+  ) {
+    return [
+      for (final d in docs)
+        if (!(d.data()['isHidden'] as bool? ?? false)) _fromDoc(d.id, d.data()),
+    ];
+  }
+
   ReviewEntity _fromDoc(String docId, Map<String, dynamic> data) {
     return ReviewEntity(
       reviewId: data['reviewId'] as String? ?? docId,
@@ -268,6 +341,8 @@ class FirebaseReviewRepository implements ReviewRepository {
       priceTags: _stringList(data['priceTags']),
       photoUrls: _stringList(data['photoUrls']),
       photoStoragePaths: _stringList(data['photoStoragePaths']),
+      reportCount: (data['reportCount'] as num?)?.toInt() ?? 0,
+      isHidden: data['isHidden'] as bool? ?? false,
       language: data['language'] as String? ?? 'en',
       createdAt: _timestampOrNow(data['createdAt']),
       updatedAt: _timestampOrNow(data['updatedAt']),
