@@ -13,18 +13,14 @@ import 'presentation/providers/user_providers.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   // Resolve SharedPreferences eagerly so the locale + theme providers can
   // read the saved values synchronously when the first widget builds — no
   // flash of default settings before the saved values load.
   final prefs = await SharedPreferences.getInstance();
   runApp(
     ProviderScope(
-      overrides: [
-        sharedPreferencesProvider.overrideWithValue(prefs),
-      ],
+      overrides: [sharedPreferencesProvider.overrideWithValue(prefs)],
       child: const TabeminaApp(),
     ),
   );
@@ -48,7 +44,7 @@ class TabeminaApp extends ConsumerWidget {
       theme: AppTheme.light,
       darkTheme: AppTheme.dark,
       themeMode: flutterThemeModeFor(mode),
-      routerConfig: appRouter,
+      routerConfig: ref.watch(routerProvider),
     );
   }
 }
