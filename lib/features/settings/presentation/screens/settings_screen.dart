@@ -9,6 +9,7 @@ import '../../../../core/constants/legal_constants.dart';
 import '../../../../core/providers/app_locale_provider.dart';
 import '../../../../core/providers/app_theme_mode_provider.dart';
 import '../../../../core/router/app_router.dart';
+import '../../../../features/account_deletion/presentation/account_deletion_labels.dart';
 import '../../../../features/eula/presentation/eula_labels.dart';
 import '../../../../presentation/providers/auth_providers.dart';
 import '../../../../presentation/providers/review_providers.dart';
@@ -127,14 +128,24 @@ class SettingsScreen extends ConsumerWidget {
                 trailing: _appVersion,
                 onTap: null,
               ),
-              // Account-scoped rows — only for signed-in users (unchanged).
-              if (user != null)
+              // Account-scoped rows — only for signed-in users.
+              if (user != null) ...[
                 _SettingRow(
                   icon: Icons.block_outlined,
                   label: labels.blockedUsers,
                   trailing: '',
                   onTap: () => context.push(AppRoutes.blockedUsers),
                 ),
+                // Destructive: red label + icon, but the literal "Delete
+                // account" label is what conveys the action (not color alone).
+                _SettingRow(
+                  icon: Icons.person_remove_outlined,
+                  label: AccountDeletionLabels.of(lang).rowLabel,
+                  trailing: '',
+                  destructive: true,
+                  onTap: () => context.push(AppRoutes.deleteAccount),
+                ),
+              ],
               if (user != null) ...[
                 const SizedBox(height: AppConstants.spaceLg),
                 Padding(
@@ -203,6 +214,7 @@ class _SettingRow extends StatelessWidget {
     required this.trailing,
     required this.onTap,
     this.opensExternally = false,
+    this.destructive = false,
   });
 
   final IconData icon;
@@ -215,6 +227,10 @@ class _SettingRow extends StatelessWidget {
   /// leaves the app. The icon carries the meaning; it isn't color-coded.
   final bool opensExternally;
 
+  /// When true, the icon + label are tinted with the error color to flag a
+  /// destructive action. Decoration only — the label text carries the meaning.
+  final bool destructive;
+
   /// Fixed trailing slot so every chevron lands on the same x and every value
   /// right-aligns into the same column. A row without a chevron reserves the
   /// SAME width (empty) so its value doesn't drift to a different edge.
@@ -223,6 +239,7 @@ class _SettingRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = AppColors.of(context);
+    final labelColor = destructive ? c.errorText : c.textPrimary;
     return InkWell(
       onTap: onTap,
       child: Padding(
@@ -232,7 +249,7 @@ class _SettingRow extends StatelessWidget {
         ),
         child: Row(
           children: [
-            Icon(icon, size: 20, color: c.textPrimary),
+            Icon(icon, size: 20, color: labelColor),
             const SizedBox(width: AppConstants.spaceMd),
             // The ONLY flex child — fills all free space so the value +
             // chevron slot are pushed flush against the trailing edge.
@@ -242,7 +259,7 @@ class _SettingRow extends StatelessWidget {
                 style: TextStyle(
                   fontFamily: 'Pretendard',
                   fontSize: 15,
-                  color: c.textPrimary,
+                  color: labelColor,
                 ),
               ),
             ),

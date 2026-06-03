@@ -5,6 +5,8 @@ import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/providers/app_locale_provider.dart';
 import '../../domain/entities/user_entity.dart';
+import '../../features/account_deletion/presentation/account_deletion_labels.dart';
+import '../../features/account_deletion/presentation/providers/account_deletion_providers.dart';
 import '../../shared/widgets/tabemina_snackbar.dart';
 import '../providers/auth_providers.dart';
 
@@ -54,12 +56,42 @@ class _LoginBottomSheetState extends ConsumerState<LoginBottomSheet> {
     if (!mounted) return;
 
     if (user != null) {
+      // Account-deletion recovery: if this account had a pending deletion,
+      // signing back in within the grace window cancels it. Defensive — a
+      // failed read must never block an otherwise-successful sign-in.
+      final deletionLabels = AccountDeletionLabels.of(lang);
+      var outcome = DeletionRecoveryOutcome.none;
+      try {
+        outcome = await ref
+            .read(accountDeletionControllerProvider)
+            .handleSignInRecovery(user.uid);
+      } catch (_) {
+        outcome = DeletionRecoveryOutcome.none;
+      }
+      if (!mounted) return;
+
+      if (outcome == DeletionRecoveryOutcome.expired) {
+        // Grace window already elapsed (server hasn't finalized yet) — treat
+        // the account as gone: sign back out and don't resume the action.
+        await ref.read(authRepositoryProvider).signOut();
+        if (!mounted) return;
+        Navigator.of(context).pop();
+        showTabeminaSnackbar(context, message: deletionLabels.unavailableSnack);
+        return;
+      }
+
       // Pop with the signed-in user so the caller can resume the original
       // action (e.g. open write-review) only on successful sign-in.
       Navigator.of(context).pop(user);
       // Snackbar is queued on the parent scaffold's messenger, so it stays
-      // visible after the sheet closes.
-      showTabeminaSnackbar(context, message: labels.successMessage);
+      // visible after the sheet closes. A recovered account gets the
+      // "deletion cancelled" message instead of the generic success one.
+      showTabeminaSnackbar(
+        context,
+        message: outcome == DeletionRecoveryOutcome.cancelled
+            ? deletionLabels.recoveredSnack
+            : labels.successMessage,
+      );
       return;
     }
 
@@ -78,9 +110,7 @@ class _LoginBottomSheetState extends ConsumerState<LoginBottomSheet> {
     return Container(
       decoration: BoxDecoration(
         color: c.bgCard,
-        borderRadius: const BorderRadius.vertical(
-          top: Radius.circular(24),
-        ),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
       ),
       child: SafeArea(
         top: false,

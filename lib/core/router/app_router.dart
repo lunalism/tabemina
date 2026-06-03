@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../domain/entities/review_entity.dart';
+import '../../features/account_deletion/presentation/screens/delete_account_screen.dart';
 import '../../features/blocking/presentation/screens/blocked_users_screen.dart';
 import '../../features/bookmarks/presentation/screens/bookmarks_screen.dart';
 import '../../features/eula/presentation/providers/eula_providers.dart';
@@ -32,6 +33,7 @@ abstract class AppRoutes {
   static const String editReview = '/edit-review';
   static const String settings = '/settings';
   static const String blockedUsers = '/settings/blocked-users';
+  static const String deleteAccount = '/settings/delete-account';
   static const String eula = '/eula';
 
   static String restaurantDetailFor(String placeId) =>
@@ -150,6 +152,15 @@ final routerProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) => CupertinoPage<void>(
           key: state.pageKey,
           child: const BlockedUsersScreen(),
+        ),
+      ),
+      // Account-deletion confirmation (Settings → Delete account). Sibling of
+      // /settings, pushed on top with the standard iOS slide + swipe-back.
+      GoRoute(
+        path: AppRoutes.deleteAccount,
+        pageBuilder: (context, state) => CupertinoPage<void>(
+          key: state.pageKey,
+          child: const DeleteAccountScreen(),
         ),
       ),
       // Restaurant detail. CupertinoPage gives the native iOS slide-from-right
