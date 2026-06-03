@@ -5,6 +5,8 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/providers/app_locale_provider.dart';
+import '../../../../core/router/app_router.dart';
+import '../../../../presentation/providers/auth_providers.dart';
 import '../../../../shared/widgets/tabemina_snackbar.dart';
 import '../account_deletion_labels.dart';
 import '../providers/account_deletion_providers.dart';
@@ -27,9 +29,12 @@ class _DeleteAccountScreenState extends ConsumerState<DeleteAccountScreen> {
   bool _busy = false;
 
   Future<void> _onConfirm(AccountDeletionLabels labels) async {
+    // Guarded so repeat taps can't double-submit while the request is in flight
+    // (the button is also disabled via `_busy`).
     if (_busy) return;
     setState(() => _busy = true);
     try {
+      // Owner-write to pendingDeletionAt — must complete while still signed in.
       await ref.read(accountDeletionControllerProvider).requestDeletion();
     } catch (_) {
       if (!mounted) return;
@@ -38,10 +43,14 @@ class _DeleteAccountScreenState extends ConsumerState<DeleteAccountScreen> {
       return;
     }
     if (!mounted) return;
-    // Sign-out already happened; leave the screen and surface the notice on the
-    // Settings scaffold underneath (now in guest mode).
-    context.pop();
+    // Clean REPLACEMENT to public Home — clears the delete-account screen AND
+    // the Settings sub-stack so nothing auth-gated lingers. Then surface the
+    // notice on the Home scaffold (app-level messenger, survives the
+    // tear-down). Sign out LAST so the auth flip can't race the router and
+    // re-show this screen; we're already on a public route by then.
+    context.go(AppRoutes.home);
     showTabeminaSnackbar(context, message: labels.requestedSnack);
+    ref.read(authRepositoryProvider).signOut();
   }
 
   @override

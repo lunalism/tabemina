@@ -29,10 +29,14 @@ class AccountDeletionController {
   /// Recovery window. After this elapses the server finalizes the deletion.
   static const Duration gracePeriod = Duration(days: 30);
 
-  /// Request deletion for the signed-in user: stamp `pendingDeletionAt`, drop
-  /// the per-account draft, then sign out to guest browsing. Reviews are left
-  /// untouched — they stay visible through the grace period and are only
-  /// anonymized at finalization.
+  /// Request deletion for the signed-in user: stamp `pendingDeletionAt` and
+  /// drop the per-account draft. The owner-write must run while still
+  /// authenticated, so sign-out is deliberately NOT done here — the caller
+  /// signs out only after it has navigated away to a public route (otherwise
+  /// the auth flip races the router and re-shows the auth-gated screen).
+  ///
+  /// Reviews are left untouched — they stay visible through the grace period
+  /// and are only anonymized at finalization (B-2-4-2).
   Future<void> requestDeletion() async {
     final uid = _ref.read(currentUserProvider)?.uid;
     if (uid == null) return;
@@ -40,7 +44,6 @@ class AccountDeletionController {
     // Mirror the sign-out cleanup so a draft doesn't bleed into the next user.
     await _ref.read(draftStorageServiceProvider).clearDraft();
     _ref.invalidate(hasDraftProvider);
-    await _ref.read(authRepositoryProvider).signOut();
   }
 
   /// Evaluate a just-signed-in user's deletion state and act on it:

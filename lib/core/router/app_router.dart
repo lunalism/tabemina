@@ -70,6 +70,16 @@ final routerProvider = Provider<GoRouter>((ref) {
       // Never interfere with the splash — it owns the initial hand-off to home.
       if (loc == AppRoutes.splash) return null;
 
+      // Auth-gated routes must never be shown to a signed-out user. This is
+      // what cleanly evicts the user from /settings/delete-account the moment
+      // an account-deletion request signs them out (and guards the other
+      // account-only routes) — without it the torn-down route can re-render.
+      final user = ref.read(currentUserProvider);
+      if (user == null &&
+          (loc == AppRoutes.deleteAccount || loc == AppRoutes.blockedUsers)) {
+        return AppRoutes.home;
+      }
+
       final consent = ref.read(eulaConsentProvider);
       return consent.maybeWhen(
         data: (status) {
