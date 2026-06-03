@@ -8,6 +8,7 @@ import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../../../core/constants/app_colors.dart';
+import '../../../../core/moderation/content_filter.dart';
 import '../../../../core/providers/app_locale_provider.dart';
 import '../../../../domain/entities/review_entity.dart';
 import '../../../../domain/repositories/review_repository.dart';
@@ -167,8 +168,7 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
     for (final key in _tagKeys) {
       final def = kAllTags.firstWhere(
         (t) => t.key == key,
-        orElse: () =>
-            const TagDefinition(key: '', category: TagCategory.mood),
+        orElse: () => const TagDefinition(key: '', category: TagCategory.mood),
       );
       if (def.key.isEmpty) continue;
       switch (def.category) {
@@ -426,6 +426,15 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
       return;
     }
 
+    // Proactive objectionable-content filter (App Store Guideline 1.2). Runs on
+    // the typed comment BEFORE any write — a hard block, not a warning. The
+    // user's text is left untouched so they can edit; we deliberately don't
+    // name the matched term (avoids teaching circumvention and accusatory UX).
+    if (ref.read(contentFilterProvider).isBlocked(_comment.text)) {
+      showTabeminaSnackbar(context, message: l.commentBlocked);
+      return;
+    }
+
     HapticFeedback.mediumImpact();
     setState(() => _posting = true);
 
@@ -434,8 +443,7 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
     for (final key in _tagKeys) {
       final def = kAllTags.firstWhere(
         (t) => t.key == key,
-        orElse: () =>
-            const TagDefinition(key: '', category: TagCategory.mood),
+        orElse: () => const TagDefinition(key: '', category: TagCategory.mood),
       );
       if (def.key.isEmpty) continue;
       switch (def.category) {
@@ -494,8 +502,8 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
           userName: _anonymous
               ? l.anonymousAuthor
               : (user.displayName?.isNotEmpty == true
-                  ? user.displayName!
-                  : l.anonymousAuthor),
+                    ? user.displayName!
+                    : l.anonymousAuthor),
           userPhotoUrl: _anonymous ? null : user.photoUrl,
           placeId: _restaurant!.placeId,
           placeName: _restaurant!.name,
@@ -556,13 +564,11 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
     // is exempt). While the check is loading we optimistically allow; once
     // it resolves to a remaining Duration we disable Post and show a banner.
     final placeId = _restaurant?.placeId;
-    final Duration? cooldownRemaining =
-        (!_isEdit && placeId != null)
-            ? ref.watch(reviewCooldownRemainingProvider(placeId)).maybeWhen(
-                  data: (d) => d,
-                  orElse: () => null,
-                )
-            : null;
+    final Duration? cooldownRemaining = (!_isEdit && placeId != null)
+        ? ref
+              .watch(reviewCooldownRemainingProvider(placeId))
+              .maybeWhen(data: (d) => d, orElse: () => null)
+        : null;
     final cooldownActive = cooldownRemaining != null;
 
     // Intercept the iOS swipe-back gesture when the user has unsaved
@@ -587,121 +593,121 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
           // Hidden in edit mode and when the form is empty (nothing to save).
           onDraft: (_isEdit || !_hasContent) ? null : _manualSaveDraft,
         ),
-      bottomNavigationBar: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (cooldownActive)
-            _CooldownBanner(
-              message: CooldownLabels.of(lang).message(cooldownRemaining),
-            ),
-          PostButtonBar(
-            enabled: _canPost && !cooldownActive,
-            posting: _posting,
-            uploading: _uploadManager.hasActiveUploads,
-            hasFailed: _uploadManager.hasFailedUploads,
-            onPost: _post,
-            onRetryFailed: _retryAllFailed,
-            label: _isEdit ? l.updateReview : l.postReview,
-            postingLabel: _isEdit ? l.updating : l.posting,
-            uploadingLabel: l.photosUploading,
-            retryLabel: l.retryFailedUploads,
-          ),
-        ],
-      ),
-      // Lock the form's inputs while a submit is in flight so the user
-      // can't mutate fields mid-upload. The bottom bar lives outside this
-      // and self-guards via its own `posting` flag.
-      body: AbsorbPointer(
-        absorbing: _posting,
-        child: SingleChildScrollView(
-        padding: const EdgeInsets.only(bottom: 16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+        bottomNavigationBar: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            if (_restaurant != null)
-              RestaurantMiniCard(
-                restaurant: _restaurant!,
-                changeLabel: l.change,
-                // Locked in edit mode — you can't move a review to a
-                // different restaurant.
-                onChange: _isEdit
-                    ? null
-                    : () {
-                        setState(() => _restaurant = null);
-                        _saveDraftNow();
-                      },
-              )
-            else
-              RestaurantSearchSelect(
-                onSelected: (r) {
-                  setState(() => _restaurant = r);
-                  _saveDraftNow();
-                },
-                l: RestaurantSearchLabels(
-                  placeholder: l.searchPlaceholder,
-                  emptyHint: l.searchEmpty,
-                  noResults: l.searchNoResults,
-                  errorHint: l.searchError,
-                ),
+            if (cooldownActive)
+              _CooldownBanner(
+                message: CooldownLabels.of(lang).message(cooldownRemaining),
               ),
-            PhotoSection(
-              photos: _uploadManager.photosNotifier.value,
-              maxPhotos: _maxPhotos,
-              onPick: _pickPhotos,
-              onRemove: _removePhoto,
-              onRetry: _retryPhoto,
-              l: PhotoSectionLabels(
-                title: l.photos,
-                requiredBadge: l.requiredBadge,
-                addPhoto: l.addPhoto,
-                cover: l.cover,
-                hint: l.photosHint,
-              ),
+            PostButtonBar(
+              enabled: _canPost && !cooldownActive,
+              posting: _posting,
+              uploading: _uploadManager.hasActiveUploads,
+              hasFailed: _uploadManager.hasFailedUploads,
+              onPost: _post,
+              onRetryFailed: _retryAllFailed,
+              label: _isEdit ? l.updateReview : l.postReview,
+              postingLabel: _isEdit ? l.updating : l.posting,
+              uploadingLabel: l.photosUploading,
+              retryLabel: l.retryFailedUploads,
             ),
-            RatingSection(
-              rating: _rating,
-              onChanged: (v) {
-                setState(() => _rating = v);
-                _saveDraftNow();
-              },
-              l: RatingSectionLabels(
-                title: l.rating,
-                requiredBadge: l.requiredBadge,
-                adjectives: l.ratingAdjectives,
-                outOf: l.ratingOutOf,
-              ),
-            ),
-            TagSection(
-              languageCode: lang,
-              selected: _tagKeys,
-              onToggle: _toggleTag,
-              l: TagSectionLabels(
-                title: l.tags,
-                requiredBadge: l.requiredBadge,
-              ),
-            ),
-            CommentSection(
-              controller: _comment,
-              maxChars: _maxComment,
-              l: CommentSectionLabels(
-                title: l.comment,
-                optionalBadge: l.optionalBadge,
-                placeholder: l.commentPlaceholder,
-              ),
-            ),
-            AnonymousToggle(
-              value: _anonymous,
-              onChanged: (v) => setState(() => _anonymous = v),
-              label: l.anonymous,
-              hint: l.anonymousHint,
-            ),
-            // Spacer above the floating Post bar so the last section isn't
-            // hugged by the bar's top border.
-            const SizedBox(height: 24),
           ],
         ),
-      ),
-      ),
+        // Lock the form's inputs while a submit is in flight so the user
+        // can't mutate fields mid-upload. The bottom bar lives outside this
+        // and self-guards via its own `posting` flag.
+        body: AbsorbPointer(
+          absorbing: _posting,
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.only(bottom: 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (_restaurant != null)
+                  RestaurantMiniCard(
+                    restaurant: _restaurant!,
+                    changeLabel: l.change,
+                    // Locked in edit mode — you can't move a review to a
+                    // different restaurant.
+                    onChange: _isEdit
+                        ? null
+                        : () {
+                            setState(() => _restaurant = null);
+                            _saveDraftNow();
+                          },
+                  )
+                else
+                  RestaurantSearchSelect(
+                    onSelected: (r) {
+                      setState(() => _restaurant = r);
+                      _saveDraftNow();
+                    },
+                    l: RestaurantSearchLabels(
+                      placeholder: l.searchPlaceholder,
+                      emptyHint: l.searchEmpty,
+                      noResults: l.searchNoResults,
+                      errorHint: l.searchError,
+                    ),
+                  ),
+                PhotoSection(
+                  photos: _uploadManager.photosNotifier.value,
+                  maxPhotos: _maxPhotos,
+                  onPick: _pickPhotos,
+                  onRemove: _removePhoto,
+                  onRetry: _retryPhoto,
+                  l: PhotoSectionLabels(
+                    title: l.photos,
+                    requiredBadge: l.requiredBadge,
+                    addPhoto: l.addPhoto,
+                    cover: l.cover,
+                    hint: l.photosHint,
+                  ),
+                ),
+                RatingSection(
+                  rating: _rating,
+                  onChanged: (v) {
+                    setState(() => _rating = v);
+                    _saveDraftNow();
+                  },
+                  l: RatingSectionLabels(
+                    title: l.rating,
+                    requiredBadge: l.requiredBadge,
+                    adjectives: l.ratingAdjectives,
+                    outOf: l.ratingOutOf,
+                  ),
+                ),
+                TagSection(
+                  languageCode: lang,
+                  selected: _tagKeys,
+                  onToggle: _toggleTag,
+                  l: TagSectionLabels(
+                    title: l.tags,
+                    requiredBadge: l.requiredBadge,
+                  ),
+                ),
+                CommentSection(
+                  controller: _comment,
+                  maxChars: _maxComment,
+                  l: CommentSectionLabels(
+                    title: l.comment,
+                    optionalBadge: l.optionalBadge,
+                    placeholder: l.commentPlaceholder,
+                  ),
+                ),
+                AnonymousToggle(
+                  value: _anonymous,
+                  onChanged: (v) => setState(() => _anonymous = v),
+                  label: l.anonymous,
+                  hint: l.anonymousHint,
+                ),
+                // Spacer above the floating Post bar so the last section isn't
+                // hugged by the bar's top border.
+                const SizedBox(height: 24),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -786,6 +792,7 @@ class _Labels {
     required this.postFailed,
     required this.reviewUpdated,
     required this.reviewUpdateFailed,
+    required this.commentBlocked,
     required this.signInRequired,
     required this.discardTitle,
     required this.discardBody,
@@ -839,6 +846,7 @@ class _Labels {
   final String postFailed;
   final String reviewUpdated;
   final String reviewUpdateFailed;
+  final String commentBlocked;
   final String signInRequired;
   final String discardTitle;
   final String discardBody;
@@ -910,6 +918,9 @@ class _Labels {
     postFailed: "Couldn't post review. Please try again.",
     reviewUpdated: 'Review updated',
     reviewUpdateFailed: 'Failed to update. Please try again.',
+    commentBlocked:
+        "This review contains content that isn't allowed. Please edit and try "
+        'again.',
     signInRequired: 'Please sign in to post a review.',
     discardTitle: 'Discard review?',
     discardBody:
@@ -918,8 +929,7 @@ class _Labels {
     discardYes: 'Discard',
     discardNo: 'Keep editing',
     successTitle: 'Review posted!',
-    successSubtitle:
-        'Your review helps other travelers find great food!',
+    successSubtitle: 'Your review helps other travelers find great food!',
     searchPlaceholder: 'Search restaurant name',
     searchEmpty: 'Type a name to search for restaurants.',
     searchNoResults: 'No restaurants found.',
@@ -973,6 +983,7 @@ class _Labels {
     postFailed: 'レビューを投稿できませんでした。もう一度お試しください。',
     reviewUpdated: 'レビューを更新しました',
     reviewUpdateFailed: '更新に失敗しました。もう一度お試しください。',
+    commentBlocked: 'このレビューには使用できない内容が含まれています。編集してもう一度お試しください。',
     signInRequired: 'レビューを投稿するにはログインが必要です。',
     discardTitle: 'レビューを破棄しますか?',
     discardBody: '未保存の変更があります。本当に破棄しますか?',
@@ -1033,6 +1044,7 @@ class _Labels {
     postFailed: '리뷰를 게시할 수 없습니다. 다시 시도해 주세요.',
     reviewUpdated: '리뷰가 수정되었습니다',
     reviewUpdateFailed: '수정에 실패했습니다. 다시 시도해주세요.',
+    commentBlocked: '이 리뷰에는 허용되지 않는 내용이 포함되어 있습니다. 수정 후 다시 시도해 주세요.',
     signInRequired: '리뷰를 게시하려면 로그인이 필요합니다.',
     discardTitle: '리뷰를 삭제할까요?',
     discardBody: '저장되지 않은 변경 사항이 있습니다. 정말로 삭제하시겠어요?',
