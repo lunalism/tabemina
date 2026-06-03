@@ -88,14 +88,14 @@ class SettingsScreen extends ConsumerWidget {
                 onTap: () => AppearanceSelectorModal.show(context),
               ),
               // Legal & support — visible to everyone (guests included), since
-              // Settings is reachable without auth. These three rows LEAVE the
-              // app, so they carry the external-link icon instead of a chevron.
+              // Settings is reachable without auth. Terms / Privacy open in an
+              // in-app browser sheet, so they keep the chevron; only Contact
+              // leaves the app (mail composer) and carries the external glyph.
               _SectionHeader(label: labels.legalSupportHeader),
               _SettingRow(
                 icon: Icons.description_outlined,
                 label: legal.termsOfUse,
                 trailing: '',
-                opensExternally: true,
                 onTap: () => _openUrl(
                   LegalConstants.legalUrlForLang(
                     LegalConstants.termsOfUseUrl,
@@ -107,7 +107,6 @@ class SettingsScreen extends ConsumerWidget {
                 icon: Icons.privacy_tip_outlined,
                 label: legal.privacyPolicy,
                 trailing: '',
-                opensExternally: true,
                 onTap: () => _openUrl(
                   LegalConstants.legalUrlForLang(
                     LegalConstants.privacyPolicyUrl,
@@ -156,13 +155,14 @@ class SettingsScreen extends ConsumerWidget {
     );
   }
 
-  /// Open an external URL (hosted legal page) via the OS handler. Swallowing
-  /// failures is intentional — the user tapped a clearly external row and
-  /// there's no useful recovery if the OS rejects the URL.
+  /// Open a hosted legal page in an in-app browser sheet (SFSafariViewController
+  /// on iOS, Chrome Custom Tabs on Android) so the user stays in Tabemina and
+  /// returns with Done / swipe. Swallowing failures is intentional — there's no
+  /// useful recovery if the OS rejects the URL.
   Future<void> _openUrl(String url) async {
     final uri = Uri.tryParse(url);
     if (uri == null) return;
-    await launchUrl(uri, mode: LaunchMode.externalApplication);
+    await launchUrl(uri, mode: LaunchMode.inAppBrowserView);
   }
 
   /// Open the mail composer to the support address. If no mail app can handle
