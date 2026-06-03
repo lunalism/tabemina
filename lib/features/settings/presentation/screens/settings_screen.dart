@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_constants.dart';
+import '../../../../core/constants/legal_constants.dart';
 import '../../../../core/providers/app_locale_provider.dart';
 import '../../../../core/providers/app_theme_mode_provider.dart';
 import '../../../../core/router/app_router.dart';
+import '../../../../features/eula/presentation/eula_labels.dart';
 import '../../../../presentation/providers/auth_providers.dart';
 import '../../../../presentation/providers/review_providers.dart';
 import '../../../../shared/widgets/tabemina_snackbar.dart';
@@ -33,6 +36,9 @@ class SettingsScreen extends ConsumerWidget {
     final user = ref.watch(currentUserProvider);
     final lang = locale.languageCode;
     final labels = MyPageLabels.of(lang);
+    // "Terms of Use" / "Privacy Policy" strings are owned by the EULA gate —
+    // reused here rather than duplicated into MyPageLabels.
+    final legal = EulaLabels.of(lang);
 
     return Scaffold(
       backgroundColor: c.bgPage,
@@ -81,6 +87,41 @@ class SettingsScreen extends ConsumerWidget {
                 trailing: themeModeDisplayName(themeMode, lang),
                 onTap: () => AppearanceSelectorModal.show(context),
               ),
+              // Legal & support — visible to everyone (guests included), since
+              // Settings is reachable without auth. These three rows LEAVE the
+              // app, so they carry the external-link icon instead of a chevron.
+              _SectionHeader(label: labels.legalSupportHeader),
+              _SettingRow(
+                icon: Icons.description_outlined,
+                label: legal.termsOfUse,
+                trailing: '',
+                opensExternally: true,
+                onTap: () => _openUrl(
+                  LegalConstants.legalUrlForLang(
+                    LegalConstants.termsOfUseUrl,
+                    lang,
+                  ),
+                ),
+              ),
+              _SettingRow(
+                icon: Icons.privacy_tip_outlined,
+                label: legal.privacyPolicy,
+                trailing: '',
+                opensExternally: true,
+                onTap: () => _openUrl(
+                  LegalConstants.legalUrlForLang(
+                    LegalConstants.privacyPolicyUrl,
+                    lang,
+                  ),
+                ),
+              ),
+              _SettingRow(
+                icon: Icons.mail_outline_rounded,
+                label: labels.contactLabel,
+                trailing: '',
+                opensExternally: true,
+                onTap: () => _openContact(context),
+              ),
               _SettingRow(
                 icon: Icons.info_outline_rounded,
                 label: labels.versionLabel,
@@ -115,6 +156,31 @@ class SettingsScreen extends ConsumerWidget {
     );
   }
 
+  /// Open an external URL (hosted legal page) via the OS handler. Swallowing
+  /// failures is intentional — the user tapped a clearly external row and
+  /// there's no useful recovery if the OS rejects the URL.
+  Future<void> _openUrl(String url) async {
+    final uri = Uri.tryParse(url);
+    if (uri == null) return;
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
+  }
+
+  /// Open the mail composer to the support address. If no mail app can handle
+  /// it, fall back to surfacing the address in the snackbar so the user can
+  /// still note it down.
+  Future<void> _openContact(BuildContext context) async {
+    final uri = Uri.parse(LegalConstants.supportMailtoUrl());
+    var launched = false;
+    try {
+      launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (_) {
+      launched = false;
+    }
+    if (!launched && context.mounted) {
+      showTabeminaSnackbar(context, message: LegalConstants.supportEmail);
+    }
+  }
+
   Future<void> _signOut(
     BuildContext context,
     WidgetRef ref,
@@ -136,12 +202,18 @@ class _SettingRow extends StatelessWidget {
     required this.label,
     required this.trailing,
     required this.onTap,
+    this.opensExternally = false,
   });
 
   final IconData icon;
   final String label;
   final String trailing;
   final VoidCallback? onTap;
+
+  /// When true, the trailing affordance is an external-link glyph
+  /// (Icons.open_in_new) instead of the in-app chevron — signalling the row
+  /// leaves the app. The icon carries the meaning; it isn't color-coded.
+  final bool opensExternally;
 
   /// Fixed trailing slot so every chevron lands on the same x and every value
   /// right-aligns into the same column. A row without a chevron reserves the
@@ -197,22 +269,57 @@ class _SettingRow extends StatelessWidget {
                   ),
                 ),
               ),
-            // Reserved chevron slot (always present): chevron when the row
-            // navigates, otherwise an empty box of the same width.
+            // Reserved trailing slot (always present, same width) so every
+            // row's glyph lands in one column: a chevron for in-app rows, an
+            // external-link glyph for rows that leave the app, or an empty box
+            // for non-tappable rows.
             SizedBox(
               width: _chevronSlot,
               child: onTap != null
                   ? Align(
                       alignment: Alignment.centerRight,
                       child: Icon(
-                        Icons.chevron_right_rounded,
-                        size: 20,
+                        opensExternally
+                            ? Icons.open_in_new_rounded
+                            : Icons.chevron_right_rounded,
+                        size: opensExternally ? 18 : 20,
                         color: c.textTertiary,
                       ),
                     )
                   : null,
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Small grouping header above a cluster of setting rows (e.g. "Legal &
+/// support"). Quiet styling so it reads as a label, not a row.
+class _SectionHeader extends StatelessWidget {
+  const _SectionHeader({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AppColors.of(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        AppConstants.spaceLg,
+        AppConstants.spaceLg,
+        AppConstants.spaceLg,
+        AppConstants.spaceXs,
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontFamily: 'Pretendard',
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+          color: c.textTertiary,
+          letterSpacing: 0.3,
         ),
       ),
     );

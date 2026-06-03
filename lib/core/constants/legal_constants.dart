@@ -23,4 +23,16 @@ class LegalConstants {
   /// map directly onto the page's `?lang=` values.
   static String legalUrlForLang(String baseUrl, String languageCode) =>
       '$baseUrl?lang=$languageCode';
+
+  /// Published support contact (App Store Guideline 1.2). Surfaced in Settings
+  /// and openable via a `mailto:` composer.
+  static const String supportEmail = 'chrisholic11@gmail.com';
+
+  /// Default subject line prefilled into the support mail composer.
+  static const String supportEmailSubject = 'Tabemina Support';
+
+  /// `mailto:` URL for the support address with the subject prefilled. The
+  /// subject is percent-encoded so spaces survive across mail clients.
+  static String supportMailtoUrl() =>
+      'mailto:$supportEmail?subject=${Uri.encodeComponent(supportEmailSubject)}';
 }

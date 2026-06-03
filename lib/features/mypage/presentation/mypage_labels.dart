@@ -40,6 +40,8 @@ class MyPageLabels {
     required this.draftInProgress,
     required this.underReview,
     required this.blockedUsers,
+    required this.legalSupportHeader,
+    required this.contactLabel,
   });
 
   final String guestTitle;
@@ -87,6 +89,14 @@ class MyPageLabels {
 
   /// Settings row → Blocked-users management screen.
   final String blockedUsers;
+
+  /// "Legal & support" section header in Settings.
+  final String legalSupportHeader;
+
+  /// Settings row → opens the mail composer to the support address.
+  /// ("Terms of Use" / "Privacy Policy" labels are reused from EulaLabels to
+  /// avoid duplicating those translated strings.)
+  final String contactLabel;
 
   static MyPageLabels of(String lang) {
     switch (lang) {
@@ -136,6 +146,8 @@ class MyPageLabels {
     draftInProgress: 'You have a draft in progress',
     underReview: 'Under review',
     blockedUsers: 'Blocked users',
+    legalSupportHeader: 'Legal & support',
+    contactLabel: 'Contact',
   );
 
   static const _ja = MyPageLabels(
@@ -173,6 +185,8 @@ class MyPageLabels {
     draftInProgress: '下書きがあります',
     underReview: '審査中',
     blockedUsers: 'ブロックしたユーザー',
+    legalSupportHeader: '法的情報とサポート',
+    contactLabel: 'お問い合わせ',
   );
 
   static const _ko = MyPageLabels(
@@ -210,5 +224,7 @@ class MyPageLabels {
     draftInProgress: '작성 중인 임시저장이 있습니다',
     underReview: '검토 중',
     blockedUsers: '차단한 사용자',
+    legalSupportHeader: '법적 고지 및 지원',
+    contactLabel: '문의하기',
   );
 }
