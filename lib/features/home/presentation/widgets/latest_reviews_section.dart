@@ -11,6 +11,7 @@ import '../../../../features/reporting/presentation/review_actions.dart';
 import '../../../../features/restaurant_detail/presentation/widgets/tabemina_reviews_section.dart'
     show formatRelative;
 import '../../../../presentation/providers/review_providers.dart';
+import '../../../../shared/widgets/app_state_labels.dart';
 import '../../../../shared/widgets/network_image_fade.dart';
 import '../../../../shared/widgets/shimmer_box.dart';
 
@@ -124,6 +125,10 @@ class _RealReviewCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final c = AppColors.of(context);
     final firstLine = _firstLineOf(review.comment);
+    // Author finalized account deletion (B-2-4-2a) — show "Deleted user".
+    final deleted = review.isAuthorDeleted;
+    final displayName =
+        deleted ? AppStateLabels.of(lang).reviewDeletedAuthor : review.userName;
     return InkWell(
       onTap: () => context.push(AppRoutes.restaurantDetailFor(review.placeId)),
       onLongPress: () => showReviewActions(context, ref, review),
@@ -149,20 +154,22 @@ class _RealReviewCard extends ConsumerWidget {
                   Row(
                     children: [
                       _Avatar(
-                        photoUrl: review.userPhotoUrl,
-                        fallback: _initialsOf(review.userName),
+                        photoUrl: deleted ? null : review.userPhotoUrl,
+                        fallback: deleted ? '?' : _initialsOf(review.userName),
                       ),
                       const SizedBox(width: AppConstants.spaceSm),
                       Expanded(
                         child: Text(
-                          review.userName,
+                          displayName,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                             fontFamily: 'Pretendard',
                             fontSize: 12,
                             fontWeight: FontWeight.w500,
-                            color: c.textPrimary,
+                            fontStyle:
+                                deleted ? FontStyle.italic : FontStyle.normal,
+                            color: deleted ? c.textSecondary : c.textPrimary,
                           ),
                         ),
                       ),

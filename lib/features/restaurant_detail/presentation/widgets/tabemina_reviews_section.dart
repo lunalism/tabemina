@@ -147,6 +147,12 @@ class TabeminaReviewCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final c = AppColors.of(context);
+    // Author finalized account deletion (B-2-4-2a): the stored identity was
+    // severed server-side, so render a localized "Deleted user" label and a
+    // neutral avatar in place of the (now-empty) name/photo.
+    final deleted = review.isAuthorDeleted;
+    final displayName =
+        deleted ? AppStateLabels.of(lang).reviewDeletedAuthor : review.userName;
     return GestureDetector(
       onLongPress: () => showReviewActions(context, ref, review),
       child: Container(
@@ -163,18 +169,19 @@ class TabeminaReviewCard extends ConsumerWidget {
             Row(
               children: [
                 _Avatar(
-                  photoUrl: review.userPhotoUrl,
-                  fallback: _initialsOf(review.userName),
+                  photoUrl: deleted ? null : review.userPhotoUrl,
+                  fallback: deleted ? '?' : _initialsOf(review.userName),
                 ),
                 const SizedBox(width: AppConstants.spaceSm),
                 Expanded(
                   child: Text(
-                    review.userName,
+                    displayName,
                     style: TextStyle(
                       fontFamily: 'Pretendard',
                       fontSize: 13,
                       fontWeight: FontWeight.w500,
-                      color: c.textPrimary,
+                      fontStyle: deleted ? FontStyle.italic : FontStyle.normal,
+                      color: deleted ? c.textSecondary : c.textPrimary,
                     ),
                     overflow: TextOverflow.ellipsis,
                   ),

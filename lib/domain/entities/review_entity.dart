@@ -28,6 +28,7 @@ class ReviewEntity {
     this.photoStoragePaths = const [],
     this.reportCount = 0,
     this.isHidden = false,
+    this.isAuthorDeleted = false,
   });
 
   final String reviewId;
@@ -64,4 +65,12 @@ class ReviewEntity {
   /// as false → visible). Filtered out client-side everywhere except the
   /// author's own My Page list, where it's shown with an "Under review" tag.
   final bool isHidden;
+
+  /// Whether the review's author was finalized for account deletion
+  /// (B-2-4-2a). When set, the server has severed the author link — the stored
+  /// [userName] is cleared and [userPhotoUrl] removed — so the review card
+  /// renders a localized "Deleted user" label instead of the author identity.
+  /// The review text, rating, and photos are retained. Missing on older docs
+  /// (treated as false).
+  final bool isAuthorDeleted;
 }

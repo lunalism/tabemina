@@ -27,6 +27,7 @@ class AppStateLabels {
     required this.errorLocationTitle,
     required this.errorLocationDescription,
     required this.errorLocationCta,
+    required this.reviewDeletedAuthor,
   });
 
   // 1a — My Reviews empty
@@ -62,6 +63,10 @@ class AppStateLabels {
   final String errorLocationTitle;
   final String errorLocationDescription;
   final String errorLocationCta;
+
+  // 3 — Review whose author finalized account deletion (B-2-4-2a). Shown in
+  // place of the author name on the review card.
+  final String reviewDeletedAuthor;
 
   static AppStateLabels of(String lang) {
     switch (lang) {
@@ -99,6 +104,7 @@ class AppStateLabels {
     errorLocationDescription:
         'Enable location access to find restaurants near you.',
     errorLocationCta: 'Open settings',
+    reviewDeletedAuthor: 'Deleted user',
   );
 
   static const _ja = AppStateLabels(
@@ -122,6 +128,7 @@ class AppStateLabels {
     errorLocationTitle: '位置情報の許可が必要です',
     errorLocationDescription: '近くのレストランを見つけるには位置情報を有効にしてください。',
     errorLocationCta: '設定を開く',
+    reviewDeletedAuthor: '削除されたユーザー',
   );
 
   static const _ko = AppStateLabels(
@@ -145,5 +152,6 @@ class AppStateLabels {
     errorLocationTitle: '위치 권한이 필요해요',
     errorLocationDescription: '근처 맛집을 찾으려면 위치 권한을 허용해주세요.',
     errorLocationCta: '설정 열기',
+    reviewDeletedAuthor: '삭제된 사용자',
   );
 }

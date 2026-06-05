@@ -343,6 +343,7 @@ class FirebaseReviewRepository implements ReviewRepository {
       photoStoragePaths: _stringList(data['photoStoragePaths']),
       reportCount: (data['reportCount'] as num?)?.toInt() ?? 0,
       isHidden: data['isHidden'] as bool? ?? false,
+      isAuthorDeleted: data['isAuthorDeleted'] as bool? ?? false,
       language: data['language'] as String? ?? 'en',
       createdAt: _timestampOrNow(data['createdAt']),
       updatedAt: _timestampOrNow(data['updatedAt']),
