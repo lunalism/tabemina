@@ -1,8 +1,11 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:crypto/crypto.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 
@@ -17,11 +20,14 @@ class FirebaseAuthRepository implements AuthRepository {
   FirebaseAuthRepository({
     FirebaseAuth? auth,
     GoogleSignIn? googleSignIn,
+    FirebaseFunctions? functions,
   })  : _auth = auth ?? FirebaseAuth.instance,
-        _googleSignIn = googleSignIn ?? GoogleSignIn();
+        _googleSignIn = googleSignIn ?? GoogleSignIn(),
+        _functions = functions ?? FirebaseFunctions.instance;
 
   final FirebaseAuth _auth;
   final GoogleSignIn _googleSignIn;
+  final FirebaseFunctions _functions;
 
   @override
   Future<UserEntity?> signInWithGoogle() async {
@@ -71,6 +77,15 @@ class FirebaseAuthRepository implements AuthRepository {
     final result = await _auth.signInWithCredential(oauthCredential);
     final user = result.user;
 
+    // Capture the Apple refresh token server-side so account deletion can
+    // revoke the app's Apple tokens (B-2-4-2b, required by Apple). The
+    // authorizationCode is single-use and only available here, right after the
+    // native authorization. Fire-and-forget + fail-soft: this must never block
+    // or fail sign-in.
+    if (user != null && appleCredential.authorizationCode.isNotEmpty) {
+      unawaited(_registerAppleRefreshToken(appleCredential.authorizationCode));
+    }
+
     // Apple only hands the name back on the FIRST sign-in. Persist it onto
     // the Firebase profile so subsequent loads have a non-null displayName.
     final stitched = _stitchAppleName(appleCredential);
@@ -80,6 +95,22 @@ class FirebaseAuthRepository implements AuthRepository {
       return _mapUser(_auth.currentUser);
     }
     return _mapUser(user);
+  }
+
+  /// Hand the one-time Apple authorization code to the backend, which
+  /// exchanges it for a refresh token and stores it for later revocation.
+  /// Fails soft — a backend/network error is logged and swallowed so it can
+  /// never break the sign-in flow. The code/token never touch the client.
+  Future<void> _registerAppleRefreshToken(String authorizationCode) async {
+    try {
+      await _functions
+          .httpsCallable('registerAppleRefreshToken')
+          .call<void>({'authorizationCode': authorizationCode});
+    } catch (e) {
+      // Non-fatal: without the stored refresh token, deletion simply can't
+      // revoke this user's Apple tokens (also logged server-side).
+      debugPrint('registerAppleRefreshToken failed: $e');
+    }
   }
 
   @override

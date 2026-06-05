@@ -13,7 +13,13 @@
  *  - Reviews are ANONYMIZED and RETAINED (text, rating, photos kept; they
  *    keep counting toward the restaurant's rating average).
  *  - 30-day grace; reviews stay visible during the grace period.
- *  - Apple token revocation is B-2-4-2b — only a TODO hook lives here.
+ *
+ * B-2-4-2b — Sign in with Apple token revocation.
+ *
+ * Apple requires that account deletion also revoke the app's Apple tokens.
+ * `registerAppleRefreshToken` (onCall) captures + stores each Apple user's
+ * refresh token at sign-in (in appleAuth/{uid}, admin-only), and
+ * finalization revokes it via Apple before erasing the user.
  */
 
 import {initializeApp} from "firebase-admin/app";
@@ -26,7 +32,13 @@ import {
 import {getAuth} from "firebase-admin/auth";
 import {getStorage} from "firebase-admin/storage";
 import {onSchedule} from "firebase-functions/v2/scheduler";
+import {onCall, HttpsError} from "firebase-functions/v2/https";
 import * as logger from "firebase-functions/logger";
+import {
+  APPLE_SECRETS,
+  exchangeAuthorizationCode,
+  revokeRefreshToken,
+} from "./apple";
 
 initializeApp();
 
@@ -60,6 +72,8 @@ export const finalizeAccountDeletions = onSchedule(
     // No automatic retries: a transient failure is picked up by the next
     // daily run, and the per-user loop already isolates failures.
     retryCount: 0,
+    // Needed to mint the Apple client_secret when revoking Apple tokens.
+    secrets: APPLE_SECRETS,
   },
   async () => {
     const db = getFirestore();
@@ -112,6 +126,56 @@ export const finalizeAccountDeletions = onSchedule(
 );
 
 /**
+ * Capture a Sign in with Apple refresh token at sign-in.
+ *
+ * Called by the Flutter app right after a successful Apple sign-in with the
+ * one-time `authorizationCode`. Exchanges it for a refresh token at Apple and
+ * stores it at `appleAuth/{uid}` (admin-only, never client-readable) so
+ * account finalization can later revoke it. Returns only a status — the token
+ * never leaves the server.
+ */
+export const registerAppleRefreshToken = onCall(
+  {secrets: APPLE_SECRETS},
+  async (request) => {
+    const uid = request.auth?.uid;
+    if (!uid) {
+      throw new HttpsError("unauthenticated", "Sign-in required.");
+    }
+
+    const code = (request.data ?? {}).authorizationCode;
+    if (typeof code !== "string" || code.length === 0) {
+      throw new HttpsError(
+        "invalid-argument",
+        "authorizationCode is required.",
+      );
+    }
+
+    let refreshToken: string | null;
+    try {
+      refreshToken = await exchangeAuthorizationCode(code);
+    } catch (err) {
+      // err carries only Apple's status + body (no secrets).
+      logger.error(`Apple token exchange failed for ${uid}`, err);
+      throw new HttpsError("internal", "Apple token exchange failed.");
+    }
+
+    if (!refreshToken) {
+      throw new HttpsError(
+        "internal",
+        "Apple did not return a refresh token.",
+      );
+    }
+
+    await getFirestore().collection("appleAuth").doc(uid).set({
+      refreshToken,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+
+    return {status: "ok"};
+  },
+);
+
+/**
  * Finalize a single eligible user. Steps run in an order chosen so the
  * `users/{uid}` doc (which carries the `pendingDeletionAt` marker) is the
  * tombstone removed LAST — if any earlier step throws, the marker survives and
@@ -144,13 +208,16 @@ async function finalizeUser(
   // 3. Delete personal/profile assets in Storage (review photos are RETAINED).
   await deleteProfileAssets(uid);
 
-  // 4. Delete the Firebase Auth user (idempotent — tolerate already-gone).
+  // 4. Revoke the user's Sign in with Apple tokens (no-op for non-Apple
+  //    users). Done before deleting the Auth user so a refresh-token lookup
+  //    keyed by uid is still meaningful; a revoke failure is logged, never
+  //    fatal.
+  await revokeAppleTokenIfPresent(db, uid);
+
+  // 5. Delete the Firebase Auth user (idempotent — tolerate already-gone).
   await deleteAuthUser(uid);
 
-  // TODO(B-2-4-2b): revoke Apple token for this uid here (Sign in with Apple
-  // token revocation). Not implemented in this step.
-
-  // 5. Delete the profile doc LAST — removes the pendingDeletionAt tombstone
+  // 6. Delete the profile doc LAST — removes the pendingDeletionAt tombstone
   //    only once everything above has succeeded.
   await db.collection("users").doc(uid).delete();
 
@@ -240,6 +307,42 @@ async function deleteProfileAssets(uid: string): Promise<void> {
       logger.warn(`Profile-asset cleanup failed for prefix "${prefix}"`, err);
     }
   }
+}
+
+/**
+ * Revoke the user's Sign in with Apple tokens, if any were captured at
+ * sign-in. Google-only users (and Apple users from before token capture
+ * landed) have no `appleAuth/{uid}` doc and are skipped gracefully. A failed
+ * revoke is logged and swallowed so it never aborts the rest of finalization.
+ * The `appleAuth/{uid}` doc is always removed afterward — a deleted account
+ * keeps no Apple data.
+ */
+async function revokeAppleTokenIfPresent(
+  db: FirebaseFirestore.Firestore,
+  uid: string,
+): Promise<void> {
+  const ref = db.collection("appleAuth").doc(uid);
+  const snap = await ref.get();
+  if (!snap.exists) {
+    // No Apple token on file (Google-only or pre-feature Apple user).
+    return;
+  }
+
+  const refreshToken = snap.get("refreshToken");
+  if (typeof refreshToken === "string" && refreshToken.length > 0) {
+    try {
+      await revokeRefreshToken(refreshToken);
+      logger.info(`Revoked Apple token for ${uid}.`);
+    } catch (err) {
+      // err carries only Apple's status + body (no secrets). Non-fatal.
+      logger.error(`Apple token revoke failed for ${uid}`, err);
+    }
+  } else {
+    logger.info(`No usable Apple refresh token for ${uid}; skipping revoke.`);
+  }
+
+  // Erase the stored token regardless — the account is going away.
+  await ref.delete();
 }
 
 /** Delete the Firebase Auth user, tolerating an already-deleted user. */

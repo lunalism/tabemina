@@ -63,6 +63,13 @@ service cloud.firestore {
         && (resource == null || resource.data.reporterUserId == request.auth.uid);
     }
 
+    // Apple refresh tokens for Sign in with Apple revocation (B-2-4-2b).
+    // Written/read ONLY by the Admin SDK (Cloud Functions) — the refresh token
+    // must never be exposed to any client. Deny all direct client access.
+    match /appleAuth/{uid} {
+      allow read, write: if false;
+    }
+
     // Blocks (B-2-2). One-directional and PRIVATE to the blocker: nobody can
     // see who blocked them. Deterministic id {blockerUid}_{blockedUid} makes
     // re-block an idempotent set() — no pre-read, so no resource==null guard
