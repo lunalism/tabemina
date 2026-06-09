@@ -3,6 +3,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'core/providers/analytics_providers.dart';
 import 'core/providers/app_locale_provider.dart';
 import 'core/providers/app_theme_mode_provider.dart';
 import 'core/router/app_router.dart';
@@ -38,6 +39,9 @@ class TabeminaApp extends ConsumerWidget {
     // guest-era SharedPreferences entries into Firestore on first sign-in.
     ref.watch(userProfileSyncProvider);
     ref.watch(bookmarkMigrationProvider);
+    // Plumbing sanity check: fire a single `app_start` event so we can confirm
+    // the AnalyticsService → FirebaseAnalytics pipe is connected on launch.
+    ref.watch(appStartAnalyticsProvider);
     return MaterialApp.router(
       title: 'Tabemina',
       debugShowCheckedModeBanner: false,
