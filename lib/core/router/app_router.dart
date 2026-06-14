@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../analytics/analytics_router_listener.dart';
+import '../providers/analytics_providers.dart';
 import '../../domain/entities/review_entity.dart';
 import '../../features/account_deletion/presentation/screens/delete_account_screen.dart';
 import '../../features/blocking/presentation/screens/blocked_users_screen.dart';
@@ -62,7 +64,7 @@ final routerProvider = Provider<GoRouter>((ref) {
   ref.listen(authStateProvider, (_, _) => refresh.value++);
   ref.listen(eulaConsentProvider, (_, _) => refresh.value++);
 
-  return GoRouter(
+  final router = GoRouter(
     initialLocation: AppRoutes.splash,
     refreshListenable: refresh,
     redirect: (context, state) {
@@ -99,14 +101,17 @@ final routerProvider = Provider<GoRouter>((ref) {
       // redirect; the screen itself blocks back with PopScope. Lives outside
       // the shell so it covers the whole screen with no tab bar.
       GoRoute(
+        name: 'eula',
         path: AppRoutes.eula,
         pageBuilder: (context, state) =>
-            const MaterialPage<void>(child: EulaGateScreen()),
+            MaterialPage<void>(name: state.name, child: const EulaGateScreen()),
       ),
       GoRoute(
+        name: 'splash',
         path: AppRoutes.splash,
         pageBuilder: (context, state) => CustomTransitionPage<void>(
           key: state.pageKey,
+          name: state.name,
           child: const SplashScreen(),
           // Fade out the splash into home over 500ms.
           transitionDuration: const Duration(milliseconds: 500),
@@ -126,9 +131,11 @@ final routerProvider = Provider<GoRouter>((ref) {
       // fullscreenDialog: true on purpose — its swipe-down dismiss collides
       // with iOS Control Center / Notification Center on real devices.
       GoRoute(
+        name: 'write_review',
         path: AppRoutes.writeReview,
         pageBuilder: (context, state) => CupertinoPage<void>(
           key: state.pageKey,
+          name: state.name,
           child: WriteReviewScreen.fromExtra(state.extra),
         ),
       ),
@@ -136,11 +143,13 @@ final routerProvider = Provider<GoRouter>((ref) {
       // ReviewEntity passed via `extra`. Standard push so the left-edge
       // swipe-back gesture works.
       GoRoute(
+        name: 'edit_review',
         path: AppRoutes.editReview,
         pageBuilder: (context, state) {
           final review = state.extra as ReviewEntity?;
           return CupertinoPage<void>(
             key: state.pageKey,
+            name: state.name,
             child: review != null
                 ? WriteReviewScreen.edit(review)
                 : const WriteReviewScreen(),
@@ -149,27 +158,33 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       // Settings (My Page gear icon). Standard iOS push.
       GoRoute(
+        name: 'settings',
         path: AppRoutes.settings,
         pageBuilder: (context, state) => CupertinoPage<void>(
           key: state.pageKey,
+          name: state.name,
           child: const SettingsScreen(),
         ),
       ),
       // Blocked-users management (Settings → Blocked users). A sibling route of
       // /settings, pushed on top, so it resolves exactly as before.
       GoRoute(
+        name: 'blocked_users',
         path: AppRoutes.blockedUsers,
         pageBuilder: (context, state) => CupertinoPage<void>(
           key: state.pageKey,
+          name: state.name,
           child: const BlockedUsersScreen(),
         ),
       ),
       // Account-deletion confirmation (Settings → Delete account). Sibling of
       // /settings, pushed on top with the standard iOS slide + swipe-back.
       GoRoute(
+        name: 'delete_account',
         path: AppRoutes.deleteAccount,
         pageBuilder: (context, state) => CupertinoPage<void>(
           key: state.pageKey,
+          name: state.name,
           child: const DeleteAccountScreen(),
         ),
       ),
@@ -177,11 +192,15 @@ final routerProvider = Provider<GoRouter>((ref) {
       // push and — critically — the interactive swipe-back gesture from the
       // left edge. Material's default page route swallows that on iOS.
       GoRoute(
+        name: 'restaurant_detail',
         path: '${AppRoutes.restaurantDetail}/:placeId',
         pageBuilder: (context, state) {
           final placeId = state.pathParameters['placeId']!;
           return CupertinoPage<void>(
             key: state.pageKey,
+            // settings.name carries only the static route name — never the
+            // placeId — so screen_name stays low-cardinality.
+            name: state.name,
             child: RestaurantDetailScreen(placeId: placeId),
           );
         },
@@ -190,9 +209,13 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state, navigationShell) =>
             TabScaffold(navigationShell: navigationShell),
         branches: [
+          // Screen_view logging is handled centrally by AnalyticsRouterListener
+          // (below) reading the router's resolved configuration — branches need
+          // no per-navigator observers.
           StatefulShellBranch(
             routes: [
               GoRoute(
+                name: 'home',
                 path: AppRoutes.home,
                 builder: (context, state) => const HomeScreen(),
               ),
@@ -201,6 +224,7 @@ final routerProvider = Provider<GoRouter>((ref) {
           StatefulShellBranch(
             routes: [
               GoRoute(
+                name: 'search',
                 path: AppRoutes.search,
                 builder: (context, state) => const SearchScreen(),
               ),
@@ -209,6 +233,7 @@ final routerProvider = Provider<GoRouter>((ref) {
           StatefulShellBranch(
             routes: [
               GoRoute(
+                name: 'review',
                 path: AppRoutes.review,
                 builder: (context, state) => const ReviewScreen(),
               ),
@@ -217,6 +242,7 @@ final routerProvider = Provider<GoRouter>((ref) {
           StatefulShellBranch(
             routes: [
               GoRoute(
+                name: 'bookmarks',
                 path: AppRoutes.bookmarks,
                 builder: (context, state) => const BookmarksScreen(),
               ),
@@ -225,6 +251,7 @@ final routerProvider = Provider<GoRouter>((ref) {
           StatefulShellBranch(
             routes: [
               GoRoute(
+                name: 'my_page',
                 path: AppRoutes.mypage,
                 builder: (context, state) => const MyPageScreen(),
               ),
@@ -234,4 +261,16 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
     ],
   );
+
+  // Automatic screen_view logging. One listener on the router delegate derives
+  // the id-free leaf screen from currentConfiguration on every navigation
+  // (push/pop/go/goBranch) and forwards it to analytics — replacing the former
+  // per-navigator observer mechanism. Torn down with the provider.
+  final analyticsListener = AnalyticsRouterListener(
+    router,
+    ref.read(analyticsServiceProvider),
+  );
+  ref.onDispose(analyticsListener.dispose);
+
+  return router;
 });
