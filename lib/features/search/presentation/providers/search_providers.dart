@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
+import '../../../../core/providers/analytics_providers.dart';
 import '../../../../core/providers/app_locale_provider.dart';
 import '../../../../core/providers/location_providers.dart';
 import '../../../home/data/datasources/places_api_datasource.dart';
@@ -80,37 +81,49 @@ final searchResultsProvider =
   final override = ref.watch(searchCenterOverrideProvider);
   final datasource = ref.read(_placesDatasourceProvider);
 
+  final List<NearbyRestaurant> results;
   if (query.length >= 2) {
     // Text search keeps the user's position as the bias — overrides only
     // matter for "Search this area" which is a nearby-mode affordance.
-    return datasource.searchByText(
+    results = await datasource.searchByText(
       query: query,
       languageCode: locale.languageCode,
       includedType: filterPrimaryType(filter),
       biasLatitude: position?.latitude,
       biasLongitude: position?.longitude,
     );
+  } else {
+    // No / too-short query → nearby. Use the override when set, else the
+    // user's GPS position.
+    final lat = override?.latitude ?? position?.latitude;
+    final lng = override?.longitude ?? position?.longitude;
+    // No fix and no query → nothing actually ran; don't log a search event.
+    if (lat == null || lng == null) return const [];
+
+    results = filter == SearchFilter.all
+        ? await datasource.searchNearbyRestaurants(
+            latitude: lat,
+            longitude: lng,
+            languageCode: locale.languageCode,
+          )
+        : await datasource.searchNearbyByType(
+            latitude: lat,
+            longitude: lng,
+            primaryType: filterPrimaryType(filter)!,
+            languageCode: locale.languageCode,
+          );
   }
 
-  // No / too-short query → nearby. Use the override when set, else the
-  // user's GPS position.
-  final lat = override?.latitude ?? position?.latitude;
-  final lng = override?.longitude ?? position?.longitude;
-  if (lat == null || lng == null) return const [];
-
-  if (filter == SearchFilter.all) {
-    return datasource.searchNearbyRestaurants(
-      latitude: lat,
-      longitude: lng,
-      languageCode: locale.languageCode,
-    );
-  }
-  return datasource.searchNearbyByType(
-    latitude: lat,
-    longitude: lng,
-    primaryType: filterPrimaryType(filter)!,
-    languageCode: locale.languageCode,
-  );
+  // A real search executed. `currentPositionProvider` is a one-shot cached
+  // fetch and the query is debounced, so each rebuild here is a genuine,
+  // user-driven execution — not a per-keystroke or per-GPS-tick fire. The raw
+  // query text is never logged; only whether one was present.
+  ref.read(analyticsEventsProvider).search(
+        hasTextQuery: query.isNotEmpty,
+        filters: filter.name,
+        resultCount: results.length,
+      );
+  return results;
 });
 
 /// Maps a chip to the Places API `primaryType` / `includedType` string.

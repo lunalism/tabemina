@@ -13,6 +13,7 @@ class UserEntity {
     this.email,
     this.photoUrl,
     this.createdAt,
+    this.isNewUser,
   });
 
   final String uid;
@@ -21,6 +22,12 @@ class UserEntity {
   final String? photoUrl;
   final DateTime? createdAt;
 
+  /// Whether this sign-in created the account (Firebase
+  /// `additionalUserInfo.isNewUser`). Only populated on the sign-in result;
+  /// `null` for users sourced from the auth-state stream or a cached session,
+  /// where "new vs returning" isn't meaningful.
+  final bool? isNewUser;
+
   @override
   bool operator ==(Object other) =>
       other is UserEntity &&
@@ -28,8 +35,10 @@ class UserEntity {
       other.displayName == displayName &&
       other.email == email &&
       other.photoUrl == photoUrl &&
-      other.createdAt == createdAt;
+      other.createdAt == createdAt &&
+      other.isNewUser == isNewUser;
 
   @override
-  int get hashCode => Object.hash(uid, displayName, email, photoUrl, createdAt);
+  int get hashCode =>
+      Object.hash(uid, displayName, email, photoUrl, createdAt, isNewUser);
 }

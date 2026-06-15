@@ -41,7 +41,10 @@ class FirebaseAuthRepository implements AuthRepository {
     );
 
     final result = await _auth.signInWithCredential(credential);
-    return _mapUser(result.user);
+    return _mapUser(
+      result.user,
+      isNewUser: result.additionalUserInfo?.isNewUser,
+    );
   }
 
   @override
@@ -76,6 +79,7 @@ class FirebaseAuthRepository implements AuthRepository {
 
     final result = await _auth.signInWithCredential(oauthCredential);
     final user = result.user;
+    final isNewUser = result.additionalUserInfo?.isNewUser;
 
     // Capture the Apple refresh token server-side so account deletion can
     // revoke the app's Apple tokens (B-2-4-2b, required by Apple). The
@@ -92,9 +96,9 @@ class FirebaseAuthRepository implements AuthRepository {
     if (user != null && stitched != null && (user.displayName ?? '').isEmpty) {
       await user.updateDisplayName(stitched);
       await user.reload();
-      return _mapUser(_auth.currentUser);
+      return _mapUser(_auth.currentUser, isNewUser: isNewUser);
     }
-    return _mapUser(user);
+    return _mapUser(user, isNewUser: isNewUser);
   }
 
   /// Hand the one-time Apple authorization code to the backend, which
@@ -132,7 +136,7 @@ class FirebaseAuthRepository implements AuthRepository {
   Stream<UserEntity?> authStateChanges() =>
       _auth.authStateChanges().map(_mapUser);
 
-  UserEntity? _mapUser(User? user) {
+  UserEntity? _mapUser(User? user, {bool? isNewUser}) {
     if (user == null) return null;
     return UserEntity(
       uid: user.uid,
@@ -140,6 +144,7 @@ class FirebaseAuthRepository implements AuthRepository {
       email: user.email,
       photoUrl: user.photoURL,
       createdAt: user.metadata.creationTime,
+      isNewUser: isNewUser,
     );
   }
 

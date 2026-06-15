@@ -5,6 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_constants.dart';
+import '../../../../core/providers/analytics_providers.dart';
 import '../../../../core/providers/app_locale_provider.dart';
 import '../../../../core/router/app_router.dart';
 import '../../../../domain/entities/bookmark_entity.dart';
@@ -29,6 +30,17 @@ import '../widgets/mini_map.dart';
 import '../widgets/review_card.dart';
 import '../widgets/tabemina_reviews_section.dart';
 
+/// Fires `restaurant_viewed` exactly once per detail open. As an
+/// `autoDispose.family` its body runs once when first watched for a given
+/// placeId and is cached until the screen is popped (no listeners → dispose),
+/// so build() re-runs don't re-fire, while re-opening the screen does. This
+/// complements the id-free automatic `screen_view`. `origin` is not yet
+/// threaded from the push sites — see the STEP 3-2 follow-up.
+final _restaurantViewedProvider =
+    Provider.autoDispose.family<void, String>((ref, placeId) {
+  ref.read(analyticsEventsProvider).restaurantViewed(restaurantId: placeId);
+});
+
 /// Full restaurant detail page — hero gallery, info, action row, info grid,
 /// mini map, reviews, fixed bottom bar.
 ///
@@ -44,6 +56,8 @@ class RestaurantDetailScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final c = AppColors.of(context);
+    // One-shot analytics for opening this restaurant (id-only, no PII).
+    ref.watch(_restaurantViewedProvider(placeId));
     final async = ref.watch(placeDetailProvider(placeId));
     // We do *not* watch isBookmarkedProvider at this level on purpose:
     // a bookmark toggle should rebuild only the two bookmark icons (one
@@ -444,22 +458,35 @@ class _ErrorView extends ConsumerWidget {
 /// Toggle the restaurant's bookmark status through the active repo
 /// (Firestore when signed in, SharedPreferences when guest) and surface a
 /// localized snackbar so the user knows the tap registered.
-void _toggleBookmark(BuildContext context, WidgetRef ref, PlaceDetail detail) {
+Future<void> _toggleBookmark(
+  BuildContext context,
+  WidgetRef ref,
+  PlaceDetail detail,
+) async {
   final repo = ref.read(bookmarkRepositoryProvider);
+  final analytics = ref.read(analyticsEventsProvider);
   final lang = ref.read(appLocaleProvider).languageCode;
   final labels = BookmarksLabels.of(lang);
   final coral = AppColors.of(context).primary;
   final alreadySaved = ref.read(isBookmarkedProvider(detail.id));
 
   if (alreadySaved) {
-    repo.removeBookmark(detail.id);
     showTabeminaSnackbar(
       context,
       message: labels.removedSnack,
       icon: Icons.bookmark_outline_rounded,
     );
+    await repo.removeBookmark(detail.id);
+    // origin omitted: the detail screen doesn't know how it was reached.
+    analytics.bookmarkRemoved(restaurantId: detail.id);
   } else {
-    repo.addBookmark(BookmarkEntity(
+    showTabeminaSnackbar(
+      context,
+      message: labels.savedSnack,
+      icon: Icons.bookmark_rounded,
+      iconColor: coral,
+    );
+    await repo.addBookmark(BookmarkEntity(
       placeId: detail.id,
       placeName: detail.displayName,
       placeAddress: detail.formattedAddress,
@@ -474,12 +501,7 @@ void _toggleBookmark(BuildContext context, WidgetRef ref, PlaceDetail detail) {
       primaryType: detail.primaryType,
       savedAt: DateTime.now(),
     ));
-    showTabeminaSnackbar(
-      context,
-      message: labels.savedSnack,
-      icon: Icons.bookmark_rounded,
-      iconColor: coral,
-    );
+    analytics.bookmarkAdded(restaurantId: detail.id);
   }
 }
 

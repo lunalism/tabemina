@@ -9,6 +9,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/moderation/content_filter.dart';
+import '../../../../core/providers/analytics_providers.dart';
 import '../../../../core/providers/app_locale_provider.dart';
 import '../../../../domain/entities/review_entity.dart';
 import '../../../../domain/repositories/review_repository.dart';
@@ -518,6 +519,17 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
         await ref.read(draftStorageServiceProvider).clearDraft();
         ref.invalidate(hasDraftProvider);
       }
+
+      // Success-gated: only reached after the Firestore write above completed.
+      // `is_edit` disambiguates from a new post (both share the write_review
+      // screen_name). atmosphere = the chosen mood tags (no dedicated field).
+      ref.read(analyticsEventsProvider).reviewSubmitted(
+            rating: _rating.toDouble(),
+            atmosphere: moodTags.isEmpty ? null : moodTags.join(','),
+            restaurantId: _restaurant!.placeId,
+            isEdit: _isEdit,
+            photoCount: photoUrls.length,
+          );
 
       // Refresh the home feed's latest reviews + the user's grid. The
       // detail page's placeReviewsProvider is a stream, so it picks up

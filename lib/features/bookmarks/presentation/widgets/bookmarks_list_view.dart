@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/providers/analytics_providers.dart';
 import '../../../../core/providers/app_locale_provider.dart';
 import '../../../../presentation/providers/bookmark_providers.dart';
 import '../../../../shared/widgets/app_error_kind.dart';
@@ -56,9 +57,14 @@ class BookmarksListView extends ConsumerWidget {
           itemBuilder: (_, i) => BookmarkCard(
             bookmark: bookmarks[i],
             labels: labels,
-            onRemove: () => ref
-                .read(bookmarkRepositoryProvider)
-                .removeBookmark(bookmarks[i].placeId),
+            onRemove: () async {
+              final placeId = bookmarks[i].placeId;
+              await ref.read(bookmarkRepositoryProvider).removeBookmark(placeId);
+              // origin is trivially known here — this is the saved-list.
+              ref
+                  .read(analyticsEventsProvider)
+                  .bookmarkRemoved(restaurantId: placeId, origin: 'bookmark_list');
+            },
           ),
         );
       },

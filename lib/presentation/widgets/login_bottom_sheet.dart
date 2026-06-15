@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_constants.dart';
+import '../../core/providers/analytics_providers.dart';
 import '../../core/providers/app_locale_provider.dart';
 import '../../domain/entities/user_entity.dart';
 import '../../features/account_deletion/presentation/account_deletion_labels.dart';
@@ -79,6 +80,14 @@ class _LoginBottomSheetState extends ConsumerState<LoginBottomSheet> {
         showTabeminaSnackbar(context, message: deletionLabels.unavailableSnack);
         return;
       }
+
+      // Genuine sign-in (the account wasn't evicted by the expired branch
+      // above). Log it with the provider used and whether the account was just
+      // created. No PII — method is a fixed string, is_new_user a bool.
+      ref.read(analyticsEventsProvider).login(
+            method: provider.name,
+            isNewUser: user.isNewUser ?? false,
+          );
 
       // Pop with the signed-in user so the caller can resume the original
       // action (e.g. open write-review) only on successful sign-in.
