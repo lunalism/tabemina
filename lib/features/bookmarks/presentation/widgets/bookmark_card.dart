@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/analytics/analytics_origin.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/router/app_router.dart';
@@ -29,7 +30,10 @@ class BookmarkCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = AppColors.of(context);
     return InkWell(
-      onTap: () => context.push(AppRoutes.restaurantDetailFor(bookmark.placeId)),
+      onTap: () => context.push(
+        AppRoutes.restaurantDetailFor(bookmark.placeId),
+        extra: AnalyticsOrigin.bookmarkList,
+      ),
       child: Container(
         decoration: BoxDecoration(
           border: Border(

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/analytics/analytics_origin.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/providers/app_locale_provider.dart';
@@ -130,7 +131,10 @@ class _RealReviewCard extends ConsumerWidget {
     final displayName =
         deleted ? AppStateLabels.of(lang).reviewDeletedAuthor : review.userName;
     return InkWell(
-      onTap: () => context.push(AppRoutes.restaurantDetailFor(review.placeId)),
+      onTap: () => context.push(
+        AppRoutes.restaurantDetailFor(review.placeId),
+        extra: AnalyticsOrigin.homeFeed,
+      ),
       onLongPress: () => showReviewActions(context, ref, review),
       borderRadius: BorderRadius.circular(12),
       child: Container(

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../../../core/analytics/analytics_origin.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/providers/analytics_providers.dart';
@@ -21,6 +22,7 @@ import '../../../bookmarks/presentation/bookmarks_labels.dart';
 import '../../data/datasources/place_detail_remote_datasource.dart';
 import '../../data/models/place_detail.dart';
 import '../providers/place_detail_provider.dart';
+import '../providers/restaurant_viewed_provider.dart';
 import '../widgets/action_buttons.dart';
 import '../widgets/detail_bottom_bar.dart';
 import '../widgets/hero_gallery.dart';
@@ -30,34 +32,29 @@ import '../widgets/mini_map.dart';
 import '../widgets/review_card.dart';
 import '../widgets/tabemina_reviews_section.dart';
 
-/// Fires `restaurant_viewed` exactly once per detail open. As an
-/// `autoDispose.family` its body runs once when first watched for a given
-/// placeId and is cached until the screen is popped (no listeners → dispose),
-/// so build() re-runs don't re-fire, while re-opening the screen does. This
-/// complements the id-free automatic `screen_view`. `origin` is not yet
-/// threaded from the push sites — see the STEP 3-2 follow-up.
-final _restaurantViewedProvider =
-    Provider.autoDispose.family<void, String>((ref, placeId) {
-  ref.read(analyticsEventsProvider).restaurantViewed(restaurantId: placeId);
-});
-
 /// Full restaurant detail page — hero gallery, info, action row, info grid,
 /// mini map, reviews, fixed bottom bar.
 ///
 /// Driven by the Place Details endpoint; route param is the raw Google Place
-/// ID (e.g. `ChIJ...`).
+/// ID (e.g. `ChIJ...`). [origin] is the surface this page was opened from,
+/// resolved from the route extra (defaults to [AnalyticsOrigin.deepLink]).
 class RestaurantDetailScreen extends ConsumerWidget {
-  const RestaurantDetailScreen({super.key, required this.placeId});
+  const RestaurantDetailScreen({
+    super.key,
+    required this.placeId,
+    this.origin = AnalyticsOrigin.deepLink,
+  });
 
   final String placeId;
+  final AnalyticsOrigin origin;
 
   static const _expandedHeroHeight = 260.0;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final c = AppColors.of(context);
-    // One-shot analytics for opening this restaurant (id-only, no PII).
-    ref.watch(_restaurantViewedProvider(placeId));
+    // One-shot analytics for opening this restaurant (id + origin, no PII).
+    ref.watch(restaurantViewedTrackerProvider((placeId: placeId, origin: origin)));
     final async = ref.watch(placeDetailProvider(placeId));
     // We do *not* watch isBookmarkedProvider at this level on purpose:
     // a bookmark toggle should rebuild only the two bookmark icons (one
@@ -477,8 +474,11 @@ Future<void> _toggleBookmark(
       icon: Icons.bookmark_outline_rounded,
     );
     await repo.removeBookmark(detail.id);
-    // origin omitted: the detail screen doesn't know how it was reached.
-    analytics.bookmarkRemoved(restaurantId: detail.id);
+    // Surface-where-the-action-happened: this toggle lives on the detail page.
+    analytics.bookmarkRemoved(
+      restaurantId: detail.id,
+      origin: AnalyticsOrigin.restaurantDetail,
+    );
   } else {
     showTabeminaSnackbar(
       context,
@@ -501,7 +501,10 @@ Future<void> _toggleBookmark(
       primaryType: detail.primaryType,
       savedAt: DateTime.now(),
     ));
-    analytics.bookmarkAdded(restaurantId: detail.id);
+    analytics.bookmarkAdded(
+      restaurantId: detail.id,
+      origin: AnalyticsOrigin.restaurantDetail,
+    );
   }
 }
 

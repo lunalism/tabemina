@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../analytics/analytics_origin.dart';
 import '../analytics/analytics_router_listener.dart';
 import '../providers/analytics_providers.dart';
 import '../../domain/entities/review_entity.dart';
@@ -196,12 +197,15 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '${AppRoutes.restaurantDetail}/:placeId',
         pageBuilder: (context, state) {
           final placeId = state.pathParameters['placeId']!;
+          // Origin is passed via `extra` from the push site (home_feed /
+          // search_result / bookmark_list); absent extra → deep_link.
+          final origin = AnalyticsOrigin.fromExtra(state.extra);
           return CupertinoPage<void>(
             key: state.pageKey,
             // settings.name carries only the static route name — never the
             // placeId — so screen_name stays low-cardinality.
             name: state.name,
-            child: RestaurantDetailScreen(placeId: placeId),
+            child: RestaurantDetailScreen(placeId: placeId, origin: origin),
           );
         },
       ),

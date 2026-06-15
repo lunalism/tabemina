@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tabemina/core/analytics/analytics_events.dart';
+import 'package:tabemina/core/analytics/analytics_origin.dart';
 import 'package:tabemina/core/services/analytics_service.dart';
 
 /// Schema + PII guard for the [AnalyticsEvents] facade. Asserts each method
@@ -79,8 +80,11 @@ void main() {
       expect(single().params, {'restaurant_id': 'place_123'});
     });
 
-    test('includes origin when provided', () {
-      events.restaurantViewed(restaurantId: 'place_123', origin: 'home_feed');
+    test('includes origin wire value when provided', () {
+      events.restaurantViewed(
+        restaurantId: 'place_123',
+        origin: AnalyticsOrigin.homeFeed,
+      );
       expect(single().params, {
         'restaurant_id': 'place_123',
         'origin': 'home_feed',
@@ -127,14 +131,45 @@ void main() {
       expect(single().params, {'restaurant_id': 'place_1'});
     });
 
-    test('bookmark_removed with origin', () {
-      events.bookmarkRemoved(restaurantId: 'place_1', origin: 'bookmark_list');
+    test('bookmark_removed origin enum still logs "bookmark_list" (3-2 value)', () {
+      events.bookmarkRemoved(
+        restaurantId: 'place_1',
+        origin: AnalyticsOrigin.bookmarkList,
+      );
       expect(single().name, 'bookmark_removed');
       expect(single().params, {
         'restaurant_id': 'place_1',
         'origin': 'bookmark_list',
       });
     });
+
+    test('bookmark_added with restaurantDetail surface origin', () {
+      events.bookmarkAdded(
+        restaurantId: 'place_1',
+        origin: AnalyticsOrigin.restaurantDetail,
+      );
+      expect(single().params, {
+        'restaurant_id': 'place_1',
+        'origin': 'restaurant_detail',
+      });
+    });
+  });
+
+  test('every AnalyticsOrigin serializes to its snake_case wire value', () {
+    const expected = {
+      AnalyticsOrigin.homeFeed: 'home_feed',
+      AnalyticsOrigin.searchResult: 'search_result',
+      AnalyticsOrigin.mapPin: 'map_pin',
+      AnalyticsOrigin.bookmarkList: 'bookmark_list',
+      AnalyticsOrigin.restaurantDetail: 'restaurant_detail',
+      AnalyticsOrigin.myPage: 'my_page',
+      AnalyticsOrigin.deepLink: 'deep_link',
+    };
+    for (final entry in expected.entries) {
+      expect(entry.key.wireValue, entry.value);
+    }
+    // Vocabulary is complete — no value left unmapped.
+    expect(AnalyticsOrigin.values.toSet(), expected.keys.toSet());
   });
 
   test('all encoded param values are String or num (Firebase-valid)', () {

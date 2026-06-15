@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/analytics/analytics_origin.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/providers/app_locale_provider.dart';
 import '../../../../core/router/app_router.dart';
@@ -56,7 +57,10 @@ class _ReviewCell extends ConsumerWidget {
     final c = AppColors.of(context);
     final photo = review.photoUrls.isNotEmpty ? review.photoUrls.first : null;
     return GestureDetector(
-      onTap: () => context.push(AppRoutes.restaurantDetailFor(review.placeId)),
+      onTap: () => context.push(
+        AppRoutes.restaurantDetailFor(review.placeId),
+        extra: AnalyticsOrigin.myPage,
+      ),
       onLongPress: () => _onLongPress(context, ref),
       child: Stack(
         fit: StackFit.expand,

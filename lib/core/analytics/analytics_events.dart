@@ -1,4 +1,5 @@
 import '../services/analytics_service.dart';
+import 'analytics_origin.dart';
 
 /// Typed facade over [AnalyticsService.logEvent] — the single auditable place
 /// where the app's action-event schema lives. One method per event, with fixed
@@ -49,15 +50,15 @@ class AnalyticsEvents {
     });
   }
 
-  /// A restaurant detail page was opened. [origin] (home_feed | search_result |
-  /// map_pin | bookmark_list) is optional and omitted when not in scope.
+  /// A restaurant detail page was opened. [origin] is the surface it was opened
+  /// from; omitted from the payload when null.
   Future<void> restaurantViewed({
     required String restaurantId,
-    String? origin,
+    AnalyticsOrigin? origin,
   }) {
     return _analytics.logEvent('restaurant_viewed', parameters: {
       'restaurant_id': restaurantId,
-      'origin': ?origin,
+      'origin': ?origin?.wireValue,
     });
   }
 
@@ -80,19 +81,27 @@ class AnalyticsEvents {
     });
   }
 
-  /// A bookmark was added (toggle-on persisted). [origin] optional.
-  Future<void> bookmarkAdded({required String restaurantId, String? origin}) {
+  /// A bookmark was added (toggle-on persisted). [origin] is the surface where
+  /// the action happened; optional.
+  Future<void> bookmarkAdded({
+    required String restaurantId,
+    AnalyticsOrigin? origin,
+  }) {
     return _analytics.logEvent('bookmark_added', parameters: {
       'restaurant_id': restaurantId,
-      'origin': ?origin,
+      'origin': ?origin?.wireValue,
     });
   }
 
-  /// A bookmark was removed (toggle-off persisted). [origin] optional.
-  Future<void> bookmarkRemoved({required String restaurantId, String? origin}) {
+  /// A bookmark was removed (toggle-off persisted). [origin] is the surface
+  /// where the action happened; optional.
+  Future<void> bookmarkRemoved({
+    required String restaurantId,
+    AnalyticsOrigin? origin,
+  }) {
     return _analytics.logEvent('bookmark_removed', parameters: {
       'restaurant_id': restaurantId,
-      'origin': ?origin,
+      'origin': ?origin?.wireValue,
     });
   }
 }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/analytics/analytics_origin.dart';
 import '../../../../core/providers/analytics_providers.dart';
 import '../../../../core/providers/app_locale_provider.dart';
 import '../../../../presentation/providers/bookmark_providers.dart';
@@ -60,10 +61,11 @@ class BookmarksListView extends ConsumerWidget {
             onRemove: () async {
               final placeId = bookmarks[i].placeId;
               await ref.read(bookmarkRepositoryProvider).removeBookmark(placeId);
-              // origin is trivially known here — this is the saved-list.
-              ref
-                  .read(analyticsEventsProvider)
-                  .bookmarkRemoved(restaurantId: placeId, origin: 'bookmark_list');
+              // Surface-where-the-action-happened: the saved (bookmarks) list.
+              ref.read(analyticsEventsProvider).bookmarkRemoved(
+                    restaurantId: placeId,
+                    origin: AnalyticsOrigin.bookmarkList,
+                  );
             },
           ),
         );

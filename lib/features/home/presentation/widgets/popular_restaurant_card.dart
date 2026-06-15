@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/analytics/analytics_origin.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/router/app_router.dart';
@@ -34,6 +35,7 @@ class PopularRestaurantCard extends StatelessWidget {
       child: InkWell(
         onTap: () => context.push(
           AppRoutes.restaurantDetailFor(restaurant.id),
+          extra: AnalyticsOrigin.homeFeed,
         ),
         child: Container(
           width: 150,
