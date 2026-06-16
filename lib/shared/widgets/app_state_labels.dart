@@ -28,6 +28,7 @@ class AppStateLabels {
     required this.errorLocationDescription,
     required this.errorLocationCta,
     required this.reviewDeletedAuthor,
+    required this.offlineBanner,
   });
 
   // 1a — My Reviews empty
@@ -68,6 +69,10 @@ class AppStateLabels {
   // place of the author name on the review card.
   final String reviewDeletedAuthor;
 
+  // 4 — Ambient offline status banner (B-3-2). Single line, shown app-wide
+  // while the device is offline.
+  final String offlineBanner;
+
   static AppStateLabels of(String lang) {
     switch (lang) {
       case 'ja':
@@ -105,6 +110,7 @@ class AppStateLabels {
         'Enable location access to find restaurants near you.',
     errorLocationCta: 'Open settings',
     reviewDeletedAuthor: 'Deleted user',
+    offlineBanner: "You're not connected to the internet",
   );
 
   static const _ja = AppStateLabels(
@@ -129,6 +135,7 @@ class AppStateLabels {
     errorLocationDescription: '近くのレストランを見つけるには位置情報を有効にしてください。',
     errorLocationCta: '設定を開く',
     reviewDeletedAuthor: '削除されたユーザー',
+    offlineBanner: 'インターネットに接続されていません',
   );
 
   static const _ko = AppStateLabels(
@@ -153,5 +160,6 @@ class AppStateLabels {
     errorLocationDescription: '근처 맛집을 찾으려면 위치 권한을 허용해주세요.',
     errorLocationCta: '설정 열기',
     reviewDeletedAuthor: '삭제된 사용자',
+    offlineBanner: '인터넷에 연결되어 있지 않아요',
   );
 }

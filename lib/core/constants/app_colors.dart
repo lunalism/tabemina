@@ -35,6 +35,9 @@ class AppColors {
     required this.tabInactive,
     required this.snackbarBg,
     required this.snackbarText,
+    required this.offlineBannerFill,
+    required this.offlineBannerText,
+    required this.offlineBannerIcon,
   });
 
   // Primary palette
@@ -72,6 +75,12 @@ class AppColors {
   final Color snackbarBg;
   final Color snackbarText;
 
+  // Offline status banner (B-3-2) — calm, warm amber, never red. The icon and
+  // text carry the meaning; the fill is decoration only.
+  final Color offlineBannerFill;
+  final Color offlineBannerText;
+  final Color offlineBannerIcon;
+
   /// Foreground placed on top of the Coral primary in both modes.
   static const Color onPrimary = Color(0xFFFFFFFF);
 
@@ -106,6 +115,9 @@ class AppColors {
     tabInactive: Color(0xFF888780),
     snackbarBg: Color(0xF23D3A36),
     snackbarText: Color(0xFFFAFAF8),
+    offlineBannerFill: Color(0xFFF3D58C),
+    offlineBannerText: Color(0xFF7A4E12),
+    offlineBannerIcon: Color(0xFF9A6516),
   );
 
   /// Dark theme tokens. Tinted backgrounds for semantic states are expressed
@@ -136,6 +148,9 @@ class AppColors {
     tabInactive: const Color(0xFF666660),
     snackbarBg: const Color(0xF23D3D3A),
     snackbarText: const Color(0xFFFAFAF8),
+    offlineBannerFill: const Color(0xFF3E2D0E),
+    offlineBannerText: const Color(0xFFF3D58C),
+    offlineBannerIcon: const Color(0xFFE0A93F),
   );
 
   /// Resolve the right token set for the current theme brightness.
