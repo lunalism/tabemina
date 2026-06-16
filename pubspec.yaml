@@ -56,6 +56,7 @@ dependencies:
   path_provider: ^2.1.4
   unorm_dart: ^0.3.2
   firebase_analytics: ^12.4.2
+  connectivity_plus: ^7.1.1
 
 dev_dependencies:
   flutter_test:
