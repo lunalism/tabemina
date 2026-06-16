@@ -1,5 +1,5 @@
 # Uncomment this line to define a global platform for your project
-# platform :ios, '13.0'
+# platform :ios, '16.0'
 
 # CocoaPods analytics sends network stats synchronously affecting flutter build latency.
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'
@@ -29,8 +29,16 @@ flutter_ios_podfile_setup
 
 target 'Runner' do
   use_frameworks!
+  # Google-Maps-iOS-Utils does `import GoogleMaps`, but GoogleMaps 10.x ships as
+  # a static framework whose clang module isn't visible under the default
+  # use_frameworks! integration — giving "module 'GoogleMaps' not found".
+  # Global modular headers generates the module maps that resolve it. (Targeted
+  # per-pod modular headers was tried first and didn't take under use_frameworks!.)
+  # Firebase is SPM and untouched.
+  use_modular_headers!
 
   flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
+
   target 'RunnerTests' do
     inherit! :search_paths
   end

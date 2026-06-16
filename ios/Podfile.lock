@@ -11,9 +11,9 @@ PODS:
     - Flutter
     - Google-Maps-iOS-Utils (< 7.0, >= 5.0)
     - GoogleMaps (< 11.0, >= 8.4)
-  - GoogleMaps (10.13.0):
-    - GoogleMaps/Maps (= 10.13.0)
-  - GoogleMaps/Maps (10.13.0)
+  - GoogleMaps (10.14.0):
+    - GoogleMaps/Maps (= 10.14.0)
+  - GoogleMaps/Maps (10.14.0)
   - libwebp (1.5.0):
     - libwebp/demux (= 1.5.0)
     - libwebp/mux (= 1.5.0)
@@ -73,7 +73,7 @@ SPEC CHECKSUMS:
   flutter_image_compress_common: 1697a328fd72bfb335507c6bca1a65fa5ad87df1
   Google-Maps-iOS-Utils: bed22fa703c919259b3901449434d60d994fae20
   google_maps_flutter_ios: 17552876e72723da1d41accc22f03b5f7afbde69
-  GoogleMaps: 6204a0dfa2914b85f6e408cedff5fa19c7243618
+  GoogleMaps: 23807b5617f32664952c04220b3b292df87ee884
   libwebp: 02b23773aedb6ff1fd38cec7a77b81414c6842a8
   Mantle: c5aa8794a29a022dfbbfc9799af95f477a69b62d
   permission_handler_apple: 4ed2196e43d0651e8ff7ca3483a069d469701f2d
@@ -81,6 +81,6 @@ SPEC CHECKSUMS:
   SDWebImageWebPCoder: 0e06e365080397465cc73a7a9b472d8a3bd0f377
   sign_in_with_apple: c5dcc141574c8c54d5ac99dd2163c0c72ad22418
 
-PODFILE CHECKSUM: 3c63482e143d1b91d2d2560aee9fb04ecc74ac7e
+PODFILE CHECKSUM: b253a7d94d619060d3279f0f2cd1ddf263ed7051
 
 COCOAPODS: 1.16.2
