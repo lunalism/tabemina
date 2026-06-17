@@ -38,6 +38,11 @@ class AppColors {
     required this.offlineBannerFill,
     required this.offlineBannerText,
     required this.offlineBannerIcon,
+    required this.snackbarBlockedFill,
+    required this.snackbarBlockedText,
+    required this.snackbarBlockedSubtext,
+    required this.snackbarBlockedIcon,
+    required this.snackbarBlockedRetry,
   });
 
   // Primary palette
@@ -81,6 +86,15 @@ class AppColors {
   final Color offlineBannerText;
   final Color offlineBannerIcon;
 
+  // "Action blocked" snackbar (B-3-3) — intentional strong terracotta accent,
+  // identical in light + dark, with cream foreground for contrast. Distinct
+  // from the Coral primary so a blocked action never reads as a normal CTA.
+  final Color snackbarBlockedFill;
+  final Color snackbarBlockedText;
+  final Color snackbarBlockedSubtext;
+  final Color snackbarBlockedIcon;
+  final Color snackbarBlockedRetry;
+
   /// Foreground placed on top of the Coral primary in both modes.
   static const Color onPrimary = Color(0xFFFFFFFF);
 
@@ -118,6 +132,11 @@ class AppColors {
     offlineBannerFill: Color(0xFFF3D58C),
     offlineBannerText: Color(0xFF7A4E12),
     offlineBannerIcon: Color(0xFF9A6516),
+    snackbarBlockedFill: Color(0xFFB5512F),
+    snackbarBlockedText: Color(0xFFFDF6EC),
+    snackbarBlockedSubtext: Color(0xFFF0D9C4),
+    snackbarBlockedIcon: Color(0xFFFDF6EC),
+    snackbarBlockedRetry: Color(0xFFFFE3CC),
   );
 
   /// Dark theme tokens. Tinted backgrounds for semantic states are expressed
@@ -151,6 +170,12 @@ class AppColors {
     offlineBannerFill: const Color(0xFF3E2D0E),
     offlineBannerText: const Color(0xFFF3D58C),
     offlineBannerIcon: const Color(0xFFE0A93F),
+    // Terracotta is the same strong accent in both modes (cream stays legible).
+    snackbarBlockedFill: const Color(0xFFB5512F),
+    snackbarBlockedText: const Color(0xFFFDF6EC),
+    snackbarBlockedSubtext: const Color(0xFFF0D9C4),
+    snackbarBlockedIcon: const Color(0xFFFDF6EC),
+    snackbarBlockedRetry: const Color(0xFFFFE3CC),
   );
 
   /// Resolve the right token set for the current theme brightness.

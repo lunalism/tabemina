@@ -11,6 +11,8 @@ import '../../../../core/constants/app_colors.dart';
 import '../../../../core/moderation/content_filter.dart';
 import '../../../../core/providers/analytics_providers.dart';
 import '../../../../core/providers/app_locale_provider.dart';
+import '../../../../core/providers/connectivity_providers.dart';
+import '../../../../core/services/connectivity_service.dart';
 import '../../../../domain/entities/review_entity.dart';
 import '../../../../domain/repositories/review_repository.dart';
 import '../../../../core/constants/app_constants.dart';
@@ -436,6 +438,26 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
       return;
     }
 
+    // Offline gate (B-3-3-1, strategy A): a review submit uploads to Storage
+    // and isn't safely queueable, so block it up front while offline — no
+    // upload, no Firestore doc, no navigation, no draft clear. The B-1 draft
+    // auto-save has already preserved the input, so the form stays as-is.
+    // Unknown (null/loading) proceeds; the try/catch below catches real
+    // failures.
+    if (ref.read(connectivityStatusProvider).asData?.value ==
+        NetworkStatus.offline) {
+      showTabeminaBlockedSnackbar(
+        context,
+        message: l.offlineCheckConnection,
+        // Only new reviews have a B-1 draft; edits aren't persisted, so don't
+        // promise "draft saved" in edit mode.
+        subtext: _isEdit ? null : l.offlineDraftSaved,
+        retryLabel: l.retry,
+        onRetry: _post,
+      );
+      return;
+    }
+
     HapticFeedback.mediumImpact();
     setState(() => _posting = true);
 
@@ -555,10 +577,19 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
         if (mounted) context.pop();
       }
     } catch (_) {
+      // Submit failed mid-flight (e.g. the Firestore write dropped after the
+      // pre-check passed). Photos were uploaded before this point and `_canPost`
+      // gates on all uploads being ready, so no partial/orphaned doc is left —
+      // the doc write is the last step and it threw. Preserve the draft, stay on
+      // the form, and offer a retry.
       if (mounted) {
-        showTabeminaSnackbar(
+        showTabeminaBlockedSnackbar(
           context,
-          message: _isEdit ? l.reviewUpdateFailed : l.postFailed,
+          message: l.uploadFailed,
+          // "Draft saved" only applies to new reviews (see above).
+          subtext: _isEdit ? null : l.offlineDraftSaved,
+          retryLabel: l.retry,
+          onRetry: _post,
         );
       }
     } finally {
@@ -826,6 +857,10 @@ class _Labels {
     required this.minutesAgo,
     required this.hoursAgo,
     required this.daysAgo,
+    required this.offlineCheckConnection,
+    required this.offlineDraftSaved,
+    required this.uploadFailed,
+    required this.retry,
   });
 
   final String screenTitle;
@@ -880,6 +915,12 @@ class _Labels {
   final String Function(int n) minutesAgo;
   final String Function(int n) hoursAgo;
   final String Function(int n) daysAgo;
+
+  // B-3-3 offline/upload-failure snackbar copy.
+  final String offlineCheckConnection;
+  final String offlineDraftSaved;
+  final String uploadFailed;
+  final String retry;
 
   static _Labels of(String code) {
     switch (code) {
@@ -956,6 +997,10 @@ class _Labels {
     minutesAgo: (n) => n == 1 ? '1 minute ago' : '$n minutes ago',
     hoursAgo: (n) => n == 1 ? '1 hour ago' : '$n hours ago',
     daysAgo: (n) => n == 1 ? '1 day ago' : '$n days ago',
+    offlineCheckConnection: 'Check your connection',
+    offlineDraftSaved: 'Your draft is saved',
+    uploadFailed: 'Upload failed',
+    retry: 'Retry',
   );
 
   static final _ja = _Labels._(
@@ -1017,6 +1062,10 @@ class _Labels {
     minutesAgo: (n) => '$n分前',
     hoursAgo: (n) => '$n時間前',
     daysAgo: (n) => '$n日前',
+    offlineCheckConnection: '接続を確認してください',
+    offlineDraftSaved: '入力内容は保存されました',
+    uploadFailed: 'アップロードに失敗しました',
+    retry: '再試行',
   );
 
   static final _ko = _Labels._(
@@ -1078,5 +1127,9 @@ class _Labels {
     minutesAgo: (n) => '$n분 전',
     hoursAgo: (n) => '$n시간 전',
     daysAgo: (n) => '$n일 전',
+    offlineCheckConnection: '연결을 확인해 주세요',
+    offlineDraftSaved: '작성한 내용은 저장됐어요',
+    uploadFailed: '업로드에 실패했어요',
+    retry: '재시도',
   );
 }

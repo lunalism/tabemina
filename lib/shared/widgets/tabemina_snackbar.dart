@@ -68,3 +68,86 @@ void showTabeminaSnackbar(
       ),
     );
 }
+
+/// Terracotta "action blocked" snackbar (B-3-3).
+///
+/// Reuses the same [ScaffoldMessenger] `SnackBar` surface as
+/// [showTabeminaSnackbar], so its content already sits under a Material (no
+/// no-Material-ancestor fallback styling). Used when an action is intentionally
+/// blocked — e.g. submitting a review while offline — or fails: a strong
+/// terracotta pill with [message], optional [subtext], and an optional
+/// [retryLabel]/[onRetry] action. Auto-dismisses after [duration] (~4s) and is
+/// swipe-dismissible. Tapping retry dismisses the snackbar and calls [onRetry].
+void showTabeminaBlockedSnackbar(
+  BuildContext context, {
+  required String message,
+  String? subtext,
+  VoidCallback? onRetry,
+  String? retryLabel,
+  Duration duration = const Duration(seconds: 4),
+}) {
+  final messenger = ScaffoldMessenger.maybeOf(context);
+  if (messenger == null) return;
+  final c = AppColors.of(context);
+
+  messenger
+    ..clearSnackBars()
+    ..showSnackBar(
+      SnackBar(
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: c.snackbarBlockedFill,
+        elevation: 6,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppConstants.radiusLg),
+        ),
+        margin: const EdgeInsets.only(
+          left: AppConstants.spaceLg,
+          right: AppConstants.spaceLg,
+          bottom: AppConstants.spaceSm,
+        ),
+        duration: duration,
+        dismissDirection: DismissDirection.horizontal,
+        content: Row(
+          children: [
+            Icon(Icons.wifi_off_rounded, size: 18, color: c.snackbarBlockedIcon),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    message,
+                    style: TextStyle(
+                      fontFamily: 'Pretendard',
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: c.snackbarBlockedText,
+                    ),
+                  ),
+                  if (subtext != null) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      subtext,
+                      style: TextStyle(
+                        fontFamily: 'Pretendard',
+                        fontSize: 12,
+                        color: c.snackbarBlockedSubtext,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
+        action: (onRetry != null && retryLabel != null)
+            ? SnackBarAction(
+                label: retryLabel,
+                textColor: c.snackbarBlockedRetry,
+                onPressed: onRetry,
+              )
+            : null,
+      ),
+    );
+}
