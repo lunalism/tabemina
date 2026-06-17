@@ -3,7 +3,9 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import '../../../../core/providers/analytics_providers.dart';
 import '../../../../core/providers/app_locale_provider.dart';
+import '../../../../core/providers/connectivity_providers.dart';
 import '../../../../core/providers/location_providers.dart';
+import '../../../../core/services/connectivity_service.dart';
 import '../../../home/data/datasources/places_api_datasource.dart';
 import '../../../home/data/models/nearby_restaurant.dart';
 
@@ -77,6 +79,15 @@ final searchResultsProvider =
   final query = ref.watch(searchQueryProvider).trim();
   final filter = ref.watch(searchFilterProvider);
   final locale = ref.watch(appLocaleProvider);
+
+  // Offline (B-3-3-2): skip the Places query entirely — no network call, no
+  // search analytics. `watch`ing connectivity means coming back online re-runs
+  // this and search resumes normally; the UI shows a passive offline state.
+  if (ref.watch(connectivityStatusProvider).asData?.value ==
+      NetworkStatus.offline) {
+    return const [];
+  }
+
   final position = await ref.watch(currentPositionProvider.future);
   final override = ref.watch(searchCenterOverrideProvider);
   final datasource = ref.read(_placesDatasourceProvider);

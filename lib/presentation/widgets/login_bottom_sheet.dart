@@ -5,9 +5,12 @@ import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/providers/analytics_providers.dart';
 import '../../core/providers/app_locale_provider.dart';
+import '../../core/providers/connectivity_providers.dart';
+import '../../core/services/connectivity_service.dart';
 import '../../domain/entities/user_entity.dart';
 import '../../features/account_deletion/presentation/account_deletion_labels.dart';
 import '../../features/account_deletion/presentation/providers/account_deletion_providers.dart';
+import '../../shared/widgets/app_state_labels.dart';
 import '../../shared/widgets/tabemina_snackbar.dart';
 import '../providers/auth_providers.dart';
 
@@ -35,6 +38,15 @@ class _LoginBottomSheetState extends ConsumerState<LoginBottomSheet> {
 
   Future<void> _signInWith(_Provider provider) async {
     if (_busy) return;
+
+    // Offline (B-3-3-2): the sign-in buttons are disabled and an inline status
+    // row explains why while offline, so just bail defensively here — no
+    // snackbar (it read like a third sign-in button in the stack).
+    if (ref.read(connectivityStatusProvider).asData?.value ==
+        NetworkStatus.offline) {
+      return;
+    }
+
     setState(() => _busy = true);
 
     final repo = ref.read(authRepositoryProvider);
@@ -84,10 +96,9 @@ class _LoginBottomSheetState extends ConsumerState<LoginBottomSheet> {
       // Genuine sign-in (the account wasn't evicted by the expired branch
       // above). Log it with the provider used and whether the account was just
       // created. No PII — method is a fixed string, is_new_user a bool.
-      ref.read(analyticsEventsProvider).login(
-            method: provider.name,
-            isNewUser: user.isNewUser ?? false,
-          );
+      ref
+          .read(analyticsEventsProvider)
+          .login(method: provider.name, isNewUser: user.isNewUser ?? false);
 
       // Pop with the signed-in user so the caller can resume the original
       // action (e.g. open write-review) only on successful sign-in.
@@ -115,6 +126,9 @@ class _LoginBottomSheetState extends ConsumerState<LoginBottomSheet> {
     final c = AppColors.of(context);
     final lang = ref.watch(appLocaleProvider).languageCode;
     final labels = _LoginLabels.of(lang);
+    final isOffline =
+        ref.watch(connectivityStatusProvider).asData?.value ==
+        NetworkStatus.offline;
 
     return Container(
       decoration: BoxDecoration(
@@ -165,13 +179,42 @@ class _LoginBottomSheetState extends ConsumerState<LoginBottomSheet> {
               const SizedBox(height: AppConstants.space2xl),
               _GoogleButton(
                 label: labels.continueWithGoogle,
-                onTap: _busy ? null : () => _signInWith(_Provider.google),
+                onTap: (_busy || isOffline)
+                    ? null
+                    : () => _signInWith(_Provider.google),
               ),
               const SizedBox(height: 12),
               _AppleButton(
                 label: labels.continueWithApple,
-                onTap: _busy ? null : () => _signInWith(_Provider.apple),
+                onTap: (_busy || isOffline)
+                    ? null
+                    : () => _signInWith(_Provider.apple),
               ),
+              // Offline: a subtle inline status (NOT a button) explains why the
+              // sign-in buttons above are disabled. The amber banner reinforces.
+              if (isOffline) ...[
+                const SizedBox(height: 14),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.wifi_off_rounded,
+                      size: 14,
+                      color: c.textSecondary,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      AppStateLabels.of(lang).offlineCheckConnection,
+                      style: TextStyle(
+                        fontFamily: 'Pretendard',
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                        color: c.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
               const SizedBox(height: AppConstants.spaceLg),
               Text(
                 labels.terms,
@@ -205,32 +248,36 @@ class _GoogleButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = AppColors.of(context);
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        height: 52,
-        decoration: BoxDecoration(
-          color: Colors.white,
-          border: Border.all(color: c.borderPrimary, width: 0.5),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        alignment: Alignment.center,
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const _GoogleGlyph(),
-            const SizedBox(width: 10),
-            Text(
-              label,
-              style: const TextStyle(
-                fontFamily: 'Pretendard',
-                fontSize: 15,
-                fontWeight: FontWeight.w500,
-                color: Color(0xFF1F1F1F),
+    // Dim when disabled (e.g. offline) so it clearly reads as non-interactive.
+    return Opacity(
+      opacity: onTap == null ? 0.45 : 1,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          height: 52,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            border: Border.all(color: c.borderPrimary, width: 0.5),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          alignment: Alignment.center,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const _GoogleGlyph(),
+              const SizedBox(width: 10),
+              Text(
+                label,
+                style: const TextStyle(
+                  fontFamily: 'Pretendard',
+                  fontSize: 15,
+                  fontWeight: FontWeight.w500,
+                  color: Color(0xFF1F1F1F),
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -245,31 +292,35 @@ class _AppleButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        height: 52,
-        decoration: BoxDecoration(
-          color: Colors.black,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        alignment: Alignment.center,
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.apple, size: 22, color: Colors.white),
-            const SizedBox(width: 8),
-            Text(
-              label,
-              style: const TextStyle(
-                fontFamily: 'Pretendard',
-                fontSize: 15,
-                fontWeight: FontWeight.w500,
-                color: Colors.white,
+    // Dim when disabled (e.g. offline) so it clearly reads as non-interactive.
+    return Opacity(
+      opacity: onTap == null ? 0.45 : 1,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          height: 52,
+          decoration: BoxDecoration(
+            color: Colors.black,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          alignment: Alignment.center,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.apple, size: 22, color: Colors.white),
+              const SizedBox(width: 8),
+              Text(
+                label,
+                style: const TextStyle(
+                  fontFamily: 'Pretendard',
+                  fontSize: 15,
+                  fontWeight: FontWeight.w500,
+                  color: Colors.white,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

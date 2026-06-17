@@ -29,6 +29,9 @@ class AppStateLabels {
     required this.errorLocationCta,
     required this.reviewDeletedAuthor,
     required this.offlineBanner,
+    required this.offlineCheckConnection,
+    required this.searchOfflineTitle,
+    required this.offlineSearch,
   });
 
   // 1a — My Reviews empty
@@ -73,6 +76,13 @@ class AppStateLabels {
   // while the device is offline.
   final String offlineBanner;
 
+  // 5 — Offline gating copy (B-3-3-2). [offlineCheckConnection] is the login
+  // offline status text; the passive search state pairs the search-specific
+  // [searchOfflineTitle] with [offlineSearch] (a "what to do" guidance line).
+  final String offlineCheckConnection;
+  final String searchOfflineTitle;
+  final String offlineSearch;
+
   static AppStateLabels of(String lang) {
     switch (lang) {
       case 'ja':
@@ -111,6 +121,9 @@ class AppStateLabels {
     errorLocationCta: 'Open settings',
     reviewDeletedAuthor: 'Deleted user',
     offlineBanner: "You're not connected to the internet",
+    offlineCheckConnection: 'Check your connection',
+    searchOfflineTitle: "Can't search",
+    offlineSearch: "Try again when you're back online",
   );
 
   static const _ja = AppStateLabels(
@@ -136,6 +149,9 @@ class AppStateLabels {
     errorLocationCta: '設定を開く',
     reviewDeletedAuthor: '削除されたユーザー',
     offlineBanner: 'インターネットに接続されていません',
+    offlineCheckConnection: '接続を確認してください',
+    searchOfflineTitle: '検索できません',
+    offlineSearch: 'オンラインに戻ったら再検索してください',
   );
 
   static const _ko = AppStateLabels(
@@ -161,5 +177,8 @@ class AppStateLabels {
     errorLocationCta: '설정 열기',
     reviewDeletedAuthor: '삭제된 사용자',
     offlineBanner: '인터넷에 연결되어 있지 않아요',
+    offlineCheckConnection: '연결을 확인해 주세요',
+    searchOfflineTitle: '검색할 수 없어요',
+    offlineSearch: '온라인 상태에서 다시 시도해 주세요',
   );
 }

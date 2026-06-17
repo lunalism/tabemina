@@ -4,7 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/providers/app_locale_provider.dart';
+import '../../../../core/providers/connectivity_providers.dart';
 import '../../../../core/providers/location_providers.dart';
+import '../../../../core/services/connectivity_service.dart';
 import '../../../../shared/widgets/app_error_kind.dart';
 import '../../../../shared/widgets/app_state_labels.dart';
 import '../../../../shared/widgets/restaurant_row_skeleton.dart';
@@ -12,6 +14,7 @@ import '../providers/search_providers.dart';
 import 'filter_chip_row.dart';
 import 'restaurant_list_item.dart';
 import 'search_empty_state.dart';
+import 'search_offline_state.dart';
 
 /// Bottom sheet for the Search tab — 3-snap draggable list, driven by
 /// [searchResultsProvider].
@@ -41,6 +44,8 @@ class SearchBottomSheet extends ConsumerWidget {
     final lang = ref.watch(appLocaleProvider).languageCode;
     final labels = SearchHeaderLabels.of(lang);
     final asyncResults = ref.watch(searchResultsProvider);
+    final isOffline = ref.watch(connectivityStatusProvider).asData?.value ==
+        NetworkStatus.offline;
     final query = ref.watch(searchQueryProvider);
     final hasQuery = query.isNotEmpty;
     final userPosition = ref
@@ -85,44 +90,57 @@ class SearchBottomSheet extends ConsumerWidget {
                     data: (list) => list.length,
                     orElse: () => 0,
                   ),
+                  // Offline shows "0 found" which reads as "nothing here"; hide
+                  // the count and let the offline state below explain.
+                  showCount: !isOffline,
                   labels: labels,
                 ),
                 const SizedBox(height: AppConstants.spaceSm),
                 const FilterChipRow(),
                 const SizedBox(height: AppConstants.spaceXs),
-                ...asyncResults.when(
-                  loading: () => [const _LoadingRow()],
-                  error: (e, _) => [
-                    Padding(
-                      padding: const EdgeInsets.symmetric(
-                        vertical: AppConstants.spaceLg,
-                      ),
-                      child: errorStateView(
-                        context,
-                        error: e,
-                        labels: AppStateLabels.of(lang),
-                        onRetry: () => ref.invalidate(searchResultsProvider),
-                        compact: true,
-                      ),
+                // Offline: a passive offline state stands in for the results —
+                // no Places query runs (the provider short-circuits too).
+                if (isOffline)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(
+                      vertical: AppConstants.spaceLg,
                     ),
-                  ],
-                  data: (items) {
-                    if (items.isEmpty) {
-                      if (hasQuery) {
-                        return [const SearchEmptyState()];
-                      }
-                      return [const _NearbyEmptyRow()];
-                    }
-                    return [
-                      for (final r in items)
-                        RestaurantListItem(
-                          restaurant: r,
-                          userLat: userPosition?.latitude,
-                          userLng: userPosition?.longitude,
+                    child: SearchOfflineState(),
+                  )
+                else
+                  ...asyncResults.when(
+                    loading: () => [const _LoadingRow()],
+                    error: (e, _) => [
+                      Padding(
+                        padding: const EdgeInsets.symmetric(
+                          vertical: AppConstants.spaceLg,
                         ),
-                    ];
-                  },
-                ),
+                        child: errorStateView(
+                          context,
+                          error: e,
+                          labels: AppStateLabels.of(lang),
+                          onRetry: () => ref.invalidate(searchResultsProvider),
+                          compact: true,
+                        ),
+                      ),
+                    ],
+                    data: (items) {
+                      if (items.isEmpty) {
+                        if (hasQuery) {
+                          return [const SearchEmptyState()];
+                        }
+                        return [const _NearbyEmptyRow()];
+                      }
+                      return [
+                        for (final r in items)
+                          RestaurantListItem(
+                            restaurant: r,
+                            userLat: userPosition?.latitude,
+                            userLng: userPosition?.longitude,
+                          ),
+                      ];
+                    },
+                  ),
                 const SizedBox(height: AppConstants.space2xl),
               ],
             ),
@@ -160,11 +178,13 @@ class _SheetHeader extends StatelessWidget {
   const _SheetHeader({
     required this.hasQuery,
     required this.count,
+    required this.showCount,
     required this.labels,
   });
 
   final bool hasQuery;
   final int count;
+  final bool showCount;
   final SearchHeaderLabels labels;
 
   @override
@@ -190,15 +210,17 @@ class _SheetHeader extends StatelessWidget {
               color: c.textPrimary,
             ),
           ),
-          const SizedBox(width: AppConstants.spaceSm),
-          Text(
-            labels.found(count),
-            style: TextStyle(
-              fontFamily: 'Pretendard',
-              fontSize: 13,
-              color: c.textSecondary,
+          if (showCount) ...[
+            const SizedBox(width: AppConstants.spaceSm),
+            Text(
+              labels.found(count),
+              style: TextStyle(
+                fontFamily: 'Pretendard',
+                fontSize: 13,
+                color: c.textSecondary,
+              ),
             ),
-          ),
+          ],
           const Spacer(),
           if (!hasQuery)
             InkWell(
