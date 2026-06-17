@@ -16,6 +16,7 @@ class AppColors {
     required this.accent,
     required this.bgPage,
     required this.bgCard,
+    required this.cardShadow,
     required this.bgSkeleton,
     required this.bgSecondary,
     required this.borderPrimary,
@@ -53,6 +54,11 @@ class AppColors {
   // Neutrals
   final Color bgPage;
   final Color bgCard;
+
+  /// Soft drop shadow for cards in LIGHT mode (warm brown, very low alpha).
+  /// Transparent in dark mode — dark cards separate by luminance, no shadow.
+  final Color cardShadow;
+
   final Color bgSkeleton;
   final Color bgSecondary;
   final Color borderPrimary;
@@ -108,8 +114,9 @@ class AppColors {
     primary: Color(0xFFE8593C),
     secondary: Color(0xFFF5B85C),
     accent: Color(0xFF1A9E75),
-    bgPage: Color(0xFFFFFBF5),
+    bgPage: Color(0xFFFDFCFA),
     bgCard: Color(0xFFFFFFFF),
+    cardShadow: Color.fromRGBO(70, 45, 20, 0.07),
     bgSkeleton: Color(0xFFF1EFE8),
     bgSecondary: Color(0xFFF8F7F2),
     borderPrimary: Color(0xFFE8E6DF),
@@ -147,6 +154,7 @@ class AppColors {
     accent: const Color(0xFF5DCAA5),
     bgPage: const Color(0xFF1C1B18),
     bgCard: const Color(0xFF252420),
+    cardShadow: Colors.transparent,
     bgSkeleton: const Color(0xFF2E2D28),
     bgSecondary: const Color(0xFF2A2924),
     borderPrimary: const Color(0xFF444441),

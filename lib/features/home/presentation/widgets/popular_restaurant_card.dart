@@ -28,56 +28,67 @@ class PopularRestaurantCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = AppColors.of(context);
-    return Material(
-      color: c.bgCard,
-      borderRadius: BorderRadius.circular(AppConstants.radiusMd),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: () => context.push(
-          AppRoutes.restaurantDetailFor(restaurant.id),
-          extra: AnalyticsOrigin.homeFeed,
-        ),
-        child: Container(
-          width: 150,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(AppConstants.radiusMd),
-            border: Border.all(color: c.borderPrimary),
+    // Soft warm lift so the card separates from the off-white page background
+    // (light only — cardShadow is transparent in dark). The shadow sits on a
+    // wrapper because the Material below clips its children (antiAlias).
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(AppConstants.radiusMd),
+        boxShadow: [
+          BoxShadow(
+            color: c.cardShadow,
+            blurRadius: 8,
+            offset: const Offset(0, 2),
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Stack(
-                children: [
-                  _Photo(photoName: restaurant.photoName),
-                  Positioned(
-                    top: 6,
-                    left: 6,
-                    child: _RankBadge(rank: rank),
-                  ),
-                ],
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+        ],
+      ),
+      child: Material(
+        color: c.bgCard,
+        borderRadius: BorderRadius.circular(AppConstants.radiusMd),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: () => context.push(
+            AppRoutes.restaurantDetailFor(restaurant.id),
+            extra: AnalyticsOrigin.homeFeed,
+          ),
+          child: Container(
+            width: 150,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(AppConstants.radiusMd),
+              border: Border.all(color: c.borderPrimary),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Stack(
                   children: [
-                    Text(
-                      restaurant.name,
-                      style: TextStyle(
-                        fontFamily: 'Pretendard',
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
-                        color: c.textPrimary,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 4),
-                    _MetaLine(restaurant: restaurant),
+                    _Photo(photoName: restaurant.photoName),
+                    Positioned(top: 6, left: 6, child: _RankBadge(rank: rank)),
                   ],
                 ),
-              ),
-            ],
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        restaurant.name,
+                        style: TextStyle(
+                          fontFamily: 'Pretendard',
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                          color: c.textPrimary,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 4),
+                      _MetaLine(restaurant: restaurant),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -124,10 +135,7 @@ class _RankBadge extends StatelessWidget {
     return Container(
       width: 22,
       height: 22,
-      decoration: BoxDecoration(
-        color: c.primary,
-        shape: BoxShape.circle,
-      ),
+      decoration: BoxDecoration(color: c.primary, shape: BoxShape.circle),
       alignment: Alignment.center,
       child: Text(
         '$rank',

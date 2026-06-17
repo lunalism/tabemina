@@ -142,6 +142,14 @@ class _RealReviewCard extends ConsumerWidget {
           color: c.bgCard,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: c.borderPrimary, width: 0.5),
+          // Soft warm lift on the off-white page bg (transparent in dark).
+          boxShadow: [
+            BoxShadow(
+              color: c.cardShadow,
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
         ),
         child: Stack(
           children: [
