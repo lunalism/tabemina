@@ -114,7 +114,7 @@ class AppColors {
     primary: Color(0xFFDB6A4F),
     secondary: Color(0xFFF5B85C),
     accent: Color(0xFF1A9E75),
-    bgPage: Color(0xFFFDFCFA),
+    bgPage: Color(0xFFFFFFFF),
     bgCard: Color(0xFFFFFFFF),
     cardShadow: Color.fromRGBO(70, 45, 20, 0.07),
     bgSkeleton: Color(0xFFF1EFE8),
