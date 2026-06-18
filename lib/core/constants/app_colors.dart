@@ -106,12 +106,12 @@ class AppColors {
 
   /// Brand Coral, identical in both modes — for surfaces (splash, FAB) that
   /// should read as Coral regardless of theme.
-  static const Color brandCoralLight = Color(0xFFE8593C);
-  static const Color brandCoralDark = Color(0xFFFF8C66);
+  static const Color brandCoralLight = Color(0xFFDB6A4F);
+  static const Color brandCoralDark = Color(0xFFE5917B);
 
   /// Light theme tokens.
   static const AppColors light = AppColors._(
-    primary: Color(0xFFE8593C),
+    primary: Color(0xFFDB6A4F),
     secondary: Color(0xFFF5B85C),
     accent: Color(0xFF1A9E75),
     bgPage: Color(0xFFFDFCFA),
@@ -132,7 +132,7 @@ class AppColors {
     warningText: Color(0xFF633806),
     infoBg: Color(0xFFE6F1FB),
     infoText: Color(0xFF0C447C),
-    tabActive: Color(0xFFE8593C),
+    tabActive: Color(0xFFDB6A4F),
     tabInactive: Color(0xFF888780),
     snackbarBg: Color(0xF23D3A36),
     snackbarText: Color(0xFFFAFAF8),
@@ -149,7 +149,7 @@ class AppColors {
   /// Dark theme tokens. Tinted backgrounds for semantic states are expressed
   /// at 12% alpha over the corresponding accent.
   static AppColors dark = AppColors._(
-    primary: const Color(0xFFFF8C66),
+    primary: const Color(0xFFE5917B),
     secondary: const Color(0xFFF5B85C),
     accent: const Color(0xFF5DCAA5),
     bgPage: const Color(0xFF1C1B18),
@@ -171,7 +171,7 @@ class AppColors {
     warningText: const Color(0xFFF5B85C),
     infoBg: const Color(0x1F4285F4),
     infoText: const Color(0xFF7BAAF0),
-    tabActive: const Color(0xFFFF8C66),
+    tabActive: const Color(0xFFE5917B),
     tabInactive: const Color(0xFF666660),
     snackbarBg: const Color(0xF23D3D3A),
     snackbarText: const Color(0xFFFAFAF8),

@@ -180,7 +180,7 @@ class _ReviewsSection extends StatelessWidget {
   static const _mockReviews = <DetailReviewData>[
     DetailReviewData(
       initials: 'YT',
-      avatarColor: Color(0xFFE8593C),
+      avatarColor: AppColors.brandCoralLight,
       name: 'Yuki T.',
       date: '3 days ago',
       rating: 4.5,
