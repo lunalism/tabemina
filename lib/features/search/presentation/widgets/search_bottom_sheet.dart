@@ -9,6 +9,7 @@ import '../../../../core/providers/location_providers.dart';
 import '../../../../core/services/connectivity_service.dart';
 import '../../../../shared/widgets/app_error_kind.dart';
 import '../../../../shared/widgets/app_state_labels.dart';
+import '../../../../shared/widgets/nav_compact_scroller.dart';
 import '../../../../shared/widgets/restaurant_row_skeleton.dart';
 import '../../../../shared/widgets/tab_scaffold.dart';
 import '../providers/search_providers.dart';
@@ -81,72 +82,75 @@ class SearchBottomSheet extends ConsumerWidget {
             borderRadius: const BorderRadius.vertical(
               top: Radius.circular(AppConstants.radiusLg),
             ),
-            child: ListView(
-              controller: scrollController,
-              // Clear the floating nav so the last result is reachable.
-              padding: EdgeInsets.only(
-                bottom: floatingNavContentInset(context),
-              ),
-              children: [
-                _DragHandle(color: handleColor),
-                _SheetHeader(
-                  hasQuery: hasQuery,
-                  count: asyncResults.maybeWhen(
-                    data: (list) => list.length,
-                    orElse: () => 0,
-                  ),
-                  // Offline shows "0 found" which reads as "nothing here"; hide
-                  // the count and let the offline state below explain.
-                  showCount: !isOffline,
-                  labels: labels,
+            child: NavCompactScroller(
+              child: ListView(
+                controller: scrollController,
+                // Clear the floating nav so the last result is reachable.
+                padding: EdgeInsets.only(
+                  bottom: floatingNavContentInset(context),
                 ),
-                const SizedBox(height: AppConstants.spaceSm),
-                const FilterChipRow(),
-                const SizedBox(height: AppConstants.spaceXs),
-                // Offline: a passive offline state stands in for the results —
-                // no Places query runs (the provider short-circuits too).
-                if (isOffline)
-                  const Padding(
-                    padding: EdgeInsets.symmetric(
-                      vertical: AppConstants.spaceLg,
+                children: [
+                  _DragHandle(color: handleColor),
+                  _SheetHeader(
+                    hasQuery: hasQuery,
+                    count: asyncResults.maybeWhen(
+                      data: (list) => list.length,
+                      orElse: () => 0,
                     ),
-                    child: SearchOfflineState(),
-                  )
-                else
-                  ...asyncResults.when(
-                    loading: () => [const _LoadingRow()],
-                    error: (e, _) => [
-                      Padding(
-                        padding: const EdgeInsets.symmetric(
-                          vertical: AppConstants.spaceLg,
-                        ),
-                        child: errorStateView(
-                          context,
-                          error: e,
-                          labels: AppStateLabels.of(lang),
-                          onRetry: () => ref.invalidate(searchResultsProvider),
-                          compact: true,
-                        ),
-                      ),
-                    ],
-                    data: (items) {
-                      if (items.isEmpty) {
-                        if (hasQuery) {
-                          return [const SearchEmptyState()];
-                        }
-                        return [const _NearbyEmptyRow()];
-                      }
-                      return [
-                        for (final r in items)
-                          RestaurantListItem(
-                            restaurant: r,
-                            userLat: userPosition?.latitude,
-                            userLng: userPosition?.longitude,
-                          ),
-                      ];
-                    },
+                    // Offline shows "0 found" which reads as "nothing here"; hide
+                    // the count and let the offline state below explain.
+                    showCount: !isOffline,
+                    labels: labels,
                   ),
-              ],
+                  const SizedBox(height: AppConstants.spaceSm),
+                  const FilterChipRow(),
+                  const SizedBox(height: AppConstants.spaceXs),
+                  // Offline: a passive offline state stands in for the results —
+                  // no Places query runs (the provider short-circuits too).
+                  if (isOffline)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(
+                        vertical: AppConstants.spaceLg,
+                      ),
+                      child: SearchOfflineState(),
+                    )
+                  else
+                    ...asyncResults.when(
+                      loading: () => [const _LoadingRow()],
+                      error: (e, _) => [
+                        Padding(
+                          padding: const EdgeInsets.symmetric(
+                            vertical: AppConstants.spaceLg,
+                          ),
+                          child: errorStateView(
+                            context,
+                            error: e,
+                            labels: AppStateLabels.of(lang),
+                            onRetry: () =>
+                                ref.invalidate(searchResultsProvider),
+                            compact: true,
+                          ),
+                        ),
+                      ],
+                      data: (items) {
+                        if (items.isEmpty) {
+                          if (hasQuery) {
+                            return [const SearchEmptyState()];
+                          }
+                          return [const _NearbyEmptyRow()];
+                        }
+                        return [
+                          for (final r in items)
+                            RestaurantListItem(
+                              restaurant: r,
+                              userLat: userPosition?.latitude,
+                              userLng: userPosition?.longitude,
+                            ),
+                        ];
+                      },
+                    ),
+                ],
+              ),
             ),
           ),
         );

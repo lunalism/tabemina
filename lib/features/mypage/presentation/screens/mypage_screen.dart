@@ -13,6 +13,7 @@ import '../../../../presentation/providers/review_providers.dart';
 import '../../../../presentation/widgets/login_bottom_sheet.dart';
 import '../../../../shared/widgets/app_error_kind.dart';
 import '../../../../shared/widgets/app_state_labels.dart';
+import '../../../../shared/widgets/nav_compact_scroller.dart';
 import '../../../../shared/widgets/shimmer_box.dart';
 import '../../../../shared/widgets/tab_scaffold.dart';
 import '../mypage_labels.dart';
@@ -67,29 +68,31 @@ class _MyPageScreenState extends ConsumerState<MyPageScreen> {
       ),
       body: SafeArea(
         top: false,
-        child: SingleChildScrollView(
-          padding: EdgeInsets.only(
-            top: AppConstants.spaceSm,
-            bottom: floatingNavContentInset(context),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              if (user != null) ...[
-                _SignedInHeader(user: user, labels: labels),
+        child: NavCompactScroller(
+          child: SingleChildScrollView(
+            padding: EdgeInsets.only(
+              top: AppConstants.spaceSm,
+              bottom: floatingNavContentInset(context),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (user != null) ...[
+                  _SignedInHeader(user: user, labels: labels),
+                  const SizedBox(height: AppConstants.spaceXl),
+                  _StatsRowConnected(labels: labels),
+                  const SizedBox(height: AppConstants.spaceXl),
+                  _TabBar(
+                    labels: labels,
+                    selected: _tab,
+                    onChanged: (i) => setState(() => _tab = i),
+                  ),
+                  _TabContent(tab: _tab, labels: labels),
+                ] else
+                  _GuestSection(labels: labels),
                 const SizedBox(height: AppConstants.spaceXl),
-                _StatsRowConnected(labels: labels),
-                const SizedBox(height: AppConstants.spaceXl),
-                _TabBar(
-                  labels: labels,
-                  selected: _tab,
-                  onChanged: (i) => setState(() => _tab = i),
-                ),
-                _TabContent(tab: _tab, labels: labels),
-              ] else
-                _GuestSection(labels: labels),
-              const SizedBox(height: AppConstants.spaceXl),
-            ],
+              ],
+            ),
           ),
         ),
       ),

@@ -5,6 +5,7 @@ import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/providers/app_locale_provider.dart';
 import '../../../../presentation/providers/bookmark_providers.dart';
+import '../../../../shared/widgets/nav_compact_scroller.dart';
 import '../bookmarks_labels.dart';
 import '../widgets/bookmarks_list_view.dart';
 
@@ -36,7 +37,9 @@ class BookmarksScreen extends ConsumerWidget {
               ),
               labels: labels,
             ),
-            const Expanded(child: BookmarksListView()),
+            const Expanded(
+              child: NavCompactScroller(child: BookmarksListView()),
+            ),
           ],
         ),
       ),
