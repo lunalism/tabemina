@@ -14,6 +14,7 @@ import '../../../../presentation/widgets/login_bottom_sheet.dart';
 import '../../../../shared/widgets/app_error_kind.dart';
 import '../../../../shared/widgets/app_state_labels.dart';
 import '../../../../shared/widgets/shimmer_box.dart';
+import '../../../../shared/widgets/tab_scaffold.dart';
 import '../mypage_labels.dart';
 import '../widgets/review_photo_grid.dart';
 import '../widgets/reviews_empty_state.dart';
@@ -67,7 +68,10 @@ class _MyPageScreenState extends ConsumerState<MyPageScreen> {
       body: SafeArea(
         top: false,
         child: SingleChildScrollView(
-          padding: const EdgeInsets.only(top: AppConstants.spaceSm),
+          padding: EdgeInsets.only(
+            top: AppConstants.spaceSm,
+            bottom: floatingNavContentInset(context),
+          ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [

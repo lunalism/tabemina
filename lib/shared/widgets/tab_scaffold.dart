@@ -9,6 +9,26 @@ import '../../core/providers/app_locale_provider.dart';
 import '../../core/router/app_router.dart';
 import '../../presentation/widgets/auth_gate.dart';
 
+/// Floating-nav geometry (single source of truth, shared with scrollable
+/// screens via [floatingNavContentInset]).
+const double kNavTrayHeight = 64;
+const double kNavEdgeInset = 12;
+const double kNavFabSize = 54;
+
+/// On-screen footprint of the floating nav above the bottom safe-area inset:
+/// tray height (64) + bottom margin (12) + FAB overhang (54 / 2 = 27).
+const double kFloatingNavInset =
+    kNavTrayHeight + kNavEdgeInset + kNavFabSize / 2;
+
+/// Bottom padding a scrollable tab screen should reserve so its last item
+/// clears the floating nav + FAB.
+///
+/// Adds `MediaQuery.padding.bottom` (not `viewPadding`) so it auto-adapts: the
+/// home-indicator inset for a full-bleed scrollable, or 0 inside a [SafeArea]
+/// that already reserved it.
+double floatingNavContentInset(BuildContext context) =>
+    kFloatingNavInset + MediaQuery.paddingOf(context).bottom;
+
 /// App shell: hosts the five [StatefulShellRoute.indexedStack] branches and
 /// renders the bottom navigation as a **floating frosted tray with a center
 /// docked FAB**.
@@ -24,9 +44,9 @@ class TabScaffold extends ConsumerWidget {
   /// The navigation shell driving the indexed stack of tab branches.
   final StatefulNavigationShell navigationShell;
 
-  static const double _trayHeight = 64;
-  static const double _fabSize = 54;
-  static const double _edgeInset = 12;
+  static const double _trayHeight = kNavTrayHeight;
+  static const double _fabSize = kNavFabSize;
+  static const double _edgeInset = kNavEdgeInset;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -92,6 +112,7 @@ class TabScaffold extends ConsumerWidget {
             left: 0,
             right: 0,
             bottom: 0,
+            // Static, always-visible cluster (tray + FAB).
             child: SizedBox(
               // Room for the FAB to poke above the tray's top edge.
               height: safeBottom + _edgeInset + _trayHeight + _fabSize / 2,
@@ -109,7 +130,8 @@ class TabScaffold extends ConsumerWidget {
                     left: 0,
                     right: 0,
                     // Overlap the tray's top edge by ~half the FAB.
-                    bottom: safeBottom + _edgeInset + _trayHeight - _fabSize / 2,
+                    bottom:
+                        safeBottom + _edgeInset + _trayHeight - _fabSize / 2,
                     child: Center(
                       child: _CenterFab(
                         tooltip: labels.writeReview,
@@ -208,7 +230,11 @@ class _NavTab extends StatelessWidget {
             scale: active ? 1.08 : 1.0,
             duration: const Duration(milliseconds: 150),
             curve: Curves.easeOut,
-            child: Icon(active ? activeIcon : inactiveIcon, size: 24, color: color),
+            child: Icon(
+              active ? activeIcon : inactiveIcon,
+              size: 24,
+              color: color,
+            ),
           ),
           const SizedBox(height: 2),
           Text(

@@ -10,6 +10,7 @@ import '../../../../core/services/connectivity_service.dart';
 import '../../../../shared/widgets/app_error_kind.dart';
 import '../../../../shared/widgets/app_state_labels.dart';
 import '../../../../shared/widgets/restaurant_row_skeleton.dart';
+import '../../../../shared/widgets/tab_scaffold.dart';
 import '../providers/search_providers.dart';
 import 'filter_chip_row.dart';
 import 'restaurant_list_item.dart';
@@ -44,7 +45,8 @@ class SearchBottomSheet extends ConsumerWidget {
     final lang = ref.watch(appLocaleProvider).languageCode;
     final labels = SearchHeaderLabels.of(lang);
     final asyncResults = ref.watch(searchResultsProvider);
-    final isOffline = ref.watch(connectivityStatusProvider).asData?.value ==
+    final isOffline =
+        ref.watch(connectivityStatusProvider).asData?.value ==
         NetworkStatus.offline;
     final query = ref.watch(searchQueryProvider);
     final hasQuery = query.isNotEmpty;
@@ -81,7 +83,10 @@ class SearchBottomSheet extends ConsumerWidget {
             ),
             child: ListView(
               controller: scrollController,
-              padding: EdgeInsets.zero,
+              // Clear the floating nav so the last result is reachable.
+              padding: EdgeInsets.only(
+                bottom: floatingNavContentInset(context),
+              ),
               children: [
                 _DragHandle(color: handleColor),
                 _SheetHeader(
@@ -141,7 +146,6 @@ class SearchBottomSheet extends ConsumerWidget {
                       ];
                     },
                   ),
-                const SizedBox(height: AppConstants.space2xl),
               ],
             ),
           ),

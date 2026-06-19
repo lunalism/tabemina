@@ -5,6 +5,7 @@ import '../../../../core/analytics/analytics_origin.dart';
 import '../../../../core/providers/analytics_providers.dart';
 import '../../../../core/providers/app_locale_provider.dart';
 import '../../../../presentation/providers/bookmark_providers.dart';
+import '../../../../shared/widgets/tab_scaffold.dart';
 import '../../../../shared/widgets/app_error_kind.dart';
 import '../../../../shared/widgets/app_state_labels.dart';
 import '../../../../shared/widgets/restaurant_row_skeleton.dart';
@@ -51,7 +52,11 @@ class BookmarksListView extends ConsumerWidget {
           );
         }
         return ListView.builder(
-          padding: EdgeInsets.zero,
+          // When standalone (Bookmarks tab) clear the floating nav; when
+          // embedded in My Page (shrinkWrap) the host scroll handles it.
+          padding: shrinkWrap
+              ? EdgeInsets.zero
+              : EdgeInsets.only(bottom: floatingNavContentInset(context)),
           shrinkWrap: shrinkWrap,
           physics: shrinkWrap ? const NeverScrollableScrollPhysics() : null,
           itemCount: bookmarks.length,

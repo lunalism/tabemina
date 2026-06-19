@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/constants/app_colors.dart';
-import '../../../../core/constants/app_constants.dart';
 import '../../../../presentation/providers/review_providers.dart';
+import '../../../../shared/widgets/tab_scaffold.dart';
 import '../providers/popular_restaurants_provider.dart';
 import '../widgets/ad_banner_section.dart';
 import '../widgets/cafe_section.dart';
@@ -41,9 +41,11 @@ class HomeScreen extends ConsumerWidget {
         },
         child: SingleChildScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
-          child: Column(
+          // Clear the floating nav + FAB so the last section is reachable.
+          padding: EdgeInsets.only(bottom: floatingNavContentInset(context)),
+          child: const Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: const [
+            children: [
               GreetingHeader(),
               LocationPill(),
               PopularSection(),
@@ -51,7 +53,6 @@ class HomeScreen extends ConsumerWidget {
               CafeSection(),
               MoodSection(),
               LatestReviewsSection(),
-              SizedBox(height: AppConstants.space2xl),
             ],
           ),
         ),
