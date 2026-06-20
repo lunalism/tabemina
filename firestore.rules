@@ -1,80 +1,64 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // User profiles. Display name + avatar are public so reviews can show
-    // them without an extra auth round-trip, but only the owner can write
-    // their own doc.
+    // User profiles. CHANGED (S-1 fix): read is now owner-only. Reviews render
+    // author name/avatar from denormalized fields on the review doc, and no
+    // screen reads another user's doc, so public read is unnecessary and was
+    // leaking email / pendingDeletionAt. Locking read closes that PII exposure.
     match /users/{uid} {
-      allow read: if true;
+      allow read: if request.auth != null && request.auth.uid == uid;
       allow write: if request.auth != null && request.auth.uid == uid;
 
-      // Each user's saved restaurants live in a subcollection so the rule
-      // is trivially "uid-matches" and bookmarks can't leak across users.
       match /bookmarks/{bookmarkId} {
         allow read, write: if request.auth != null && request.auth.uid == uid;
       }
     }
 
-    // Reviews are public reads — guests can browse. Only signed-in users
-    // can create, and a review can only be edited/deleted by its author.
     match /reviews/{reviewId} {
       allow read: if true;
-      allow create: if request.auth != null;
 
-      // Owner: full edit/delete of their own review.
-      allow update, delete:
-        if request.auth != null && request.auth.uid == resource.data.userId;
+      // CHANGED (S-1 fix): create now verifies the author can't be forged and
+      // that moderation fields start clean. userId must equal the caller;
+      // reportCount/isHidden must start at 0/false; rating must be 1..5;
+      // isAuthorDeleted (server-only, set by the deletion CF) cannot be planted.
+      allow create: if request.auth != null
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.reportCount == 0
+        && request.resource.data.isHidden == false
+        && request.resource.data.rating >= 1 && request.resource.data.rating <= 5
+        && !('isAuthorDeleted' in request.resource.data);
 
-      // Non-owner: may touch ONLY the moderation fields, and only to bump
-      // reportCount by exactly 1 (optionally flipping isHidden to true). This
-      // is what the client-side report flow writes inside its transaction.
-      //
-      // KNOWN STAGE-0 TRADEOFF: rules can't cheaply cross-check the
-      // reports/{reviewId}_{uid} doc in the same evaluation, so a determined
-      // user could script repeated +1 increments here. Acceptable at launch
-      // volume; fully closed when auto-hide moves to Cloud Functions
-      // (stage 1) and clients lose write access to these fields entirely.
-      // Do NOT over-engineer this now.
-      // .get(field, default) tolerates legacy docs created before B-2-1 that
-      // lack reportCount / isHidden — reading the field directly would do
-      // arithmetic on a missing value and deny the write.
+      // CHANGED (S-1 fix): owner update is now restricted to the exact fields
+      // updateReview writes, so an author can no longer flip isHidden/reportCount
+      // to un-hide their own auto-hidden review or alter userId.
+      allow update: if request.auth != null && request.auth.uid == resource.data.userId
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['rating','comment','moodTags','priceTags','photoUrls','photoStoragePaths','updatedAt']);
+      allow delete: if request.auth != null && request.auth.uid == resource.data.userId;
+
+      // UNCHANGED: non-owner moderation +1 path (report flow transaction).
       allow update: if request.auth != null
         && request.resource.data.diff(resource.data)
              .affectedKeys().hasOnly(['reportCount', 'isHidden'])
         && request.resource.data.reportCount == resource.data.get('reportCount', 0) + 1
         && (request.resource.data.isHidden == resource.data.get('isHidden', false)
              || request.resource.data.isHidden == true)
-        && request.auth.uid != resource.data.userId; // can't report yourself
+        && request.auth.uid != resource.data.userId;
     }
 
-    // Content reports. Created by the reporter (as themselves) and never
-    // updated/deleted from the client — moderation happens in the Firebase
-    // Console. Reads are limited to the report's own author.
+    // UNCHANGED from here down.
     match /reports/{reportId} {
       allow create: if request.auth != null
         && request.resource.data.reporterUserId == request.auth.uid;
       allow update, delete: if false;
-      // The report flow's transaction reads this doc to dedup before writing.
-      // On a first-time report the doc doesn't exist yet, so `resource` is
-      // null — guard that case or the read rule dereferences null and denies
-      // the whole transaction. Existing docs stay readable only by their
-      // own reporter.
       allow read: if request.auth != null
         && (resource == null || resource.data.reporterUserId == request.auth.uid);
     }
 
-    // Apple refresh tokens for Sign in with Apple revocation (B-2-4-2b).
-    // Written/read ONLY by the Admin SDK (Cloud Functions) — the refresh token
-    // must never be exposed to any client. Deny all direct client access.
     match /appleAuth/{uid} {
       allow read, write: if false;
     }
 
-    // Blocks (B-2-2). One-directional and PRIVATE to the blocker: nobody can
-    // see who blocked them. Deterministic id {blockerUid}_{blockedUid} makes
-    // re-block an idempotent set() — no pre-read, so no resource==null guard
-    // is needed here (unlike reports). The list query
-    // blocks.where('blockerUserId','==',uid) is covered by the read rule.
     match /blocks/{blockId} {
       allow create: if request.auth != null
         && request.resource.data.blockerUserId == request.auth.uid;
