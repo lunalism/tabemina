@@ -10,7 +10,6 @@ import '../widgets/cafe_section.dart';
 import '../widgets/greeting_header.dart';
 import '../widgets/latest_reviews_section.dart';
 import '../widgets/location_pill.dart';
-import '../widgets/mood_section.dart';
 import '../widgets/popular_section.dart';
 
 /// Home feed — vertically scrolling stack of sections.
@@ -51,7 +50,6 @@ class HomeScreen extends ConsumerWidget {
                 LocationPill(),
                 PopularSection(),
                 CafeSection(),
-                MoodSection(),
                 LatestReviewsSection(),
               ],
             ),
