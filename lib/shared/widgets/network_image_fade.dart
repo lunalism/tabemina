@@ -31,12 +31,21 @@ class FadeInNetworkImage extends StatelessWidget {
     this.iconSize = 24,
     this.fadeInDuration = const Duration(milliseconds: 200),
     this.headers,
+    this.cacheWidth,
+    this.cacheHeight,
   });
 
   final String url;
   final double? width;
   final double? height;
   final BoxFit fit;
+
+  /// Optional decode-resolution caps forwarded to [Image.network]. Pass the
+  /// display size in DEVICE pixels (logical size × devicePixelRatio) so a
+  /// thumbnail isn't decoded at full source resolution. Set only ONE dimension
+  /// to preserve aspect ratio. Null = decode at source resolution (unchanged).
+  final int? cacheWidth;
+  final int? cacheHeight;
 
   /// Optional request headers for the underlying GET. Used by Places photo
   /// renders to send `X-Ios-Bundle-Identifier` so the request satisfies the
@@ -62,6 +71,8 @@ class FadeInNetworkImage extends StatelessWidget {
       headers: headers,
       width: width,
       height: height,
+      cacheWidth: cacheWidth,
+      cacheHeight: cacheHeight,
       fit: fit,
       frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
         // Already in the image cache — paint immediately, no shimmer, no

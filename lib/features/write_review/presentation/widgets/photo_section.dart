@@ -66,6 +66,10 @@ class PhotoSection extends StatelessWidget {
                 ],
                 for (int i = 0; i < photos.length; i++) ...[
                   _PhotoSlot(
+                    // Stable identity so gaplessPlayback can't paint a stale
+                    // image into a slot reused for a different photo after a
+                    // remove/reorder.
+                    key: ValueKey(photos[i].localId),
                     photo: photos[i],
                     isCover: i == 0,
                     coverLabel: l.cover,
@@ -116,6 +120,7 @@ class PhotoSectionLabels {
 
 class _PhotoSlot extends StatelessWidget {
   const _PhotoSlot({
+    super.key,
     required this.photo,
     required this.isCover,
     required this.coverLabel,
@@ -129,16 +134,28 @@ class _PhotoSlot extends StatelessWidget {
   final VoidCallback onRemove;
   final VoidCallback onRetry;
 
+  // Display dimensions of the slot. The decode-resolution cap is derived from
+  // these (× devicePixelRatio) so the cap tracks the actual slot size rather
+  // than being a hardcoded magic number.
+  static const double _slotWidth = 80;
+  static const double _slotHeight = 110;
+
   @override
   Widget build(BuildContext context) {
+    // Cap the decoded bitmap to the slot's HEIGHT in device pixels. Single
+    // dimension only — width is left to scale with the source aspect ratio so
+    // BoxFit.cover stays crisp and undistorted (the portrait slot makes height
+    // the binding dimension for landscape and standard-portrait sources).
+    final cacheHeight =
+        (_slotHeight * MediaQuery.devicePixelRatioOf(context)).round();
     return SizedBox(
-      width: 80,
-      height: 110,
+      width: _slotWidth,
+      height: _slotHeight,
       child: Stack(
         children: [
           ClipRRect(
             borderRadius: BorderRadius.circular(8),
-            child: _base(),
+            child: _base(cacheHeight),
           ),
           // Status overlay (processing / uploading / failed).
           Positioned.fill(
@@ -178,19 +195,31 @@ class _PhotoSlot extends StatelessWidget {
     );
   }
 
-  Widget _base() {
+  Widget _base(int cacheHeight) {
     if (photo.isExisting && photo.downloadUrl != null) {
       return FadeInNetworkImage(
         url: photo.downloadUrl!,
-        width: 80,
-        height: 110,
+        width: _slotWidth,
+        height: _slotHeight,
+        // Persisted network thumbnail — capping is fine (no local-decode
+        // concurrency to contend with).
+        cacheHeight: cacheHeight,
         borderRadius: 8,
       );
     }
+    // The processed file is the one that LINGERS in the image cache (up to 5 at
+    // once), so cap ITS decode for the memory win. The transient processing
+    // preview renders the original UNCAPPED for an instant first frame — a
+    // ResizeImage scaled-decode batched behind the 5 concurrent compressions is
+    // what delayed previews by ~2-3s. gaplessPlayback keeps the original frame
+    // on screen while the processed file's (capped) decode swaps in.
+    final processed = photo.processedFile;
     return Image.file(
-      File(photo.processedFile?.path ?? photo.originalFile.path),
-      width: 80,
-      height: 110,
+      File(processed?.path ?? photo.originalFile.path),
+      width: _slotWidth,
+      height: _slotHeight,
+      cacheHeight: processed != null ? cacheHeight : null,
+      gaplessPlayback: true,
       fit: BoxFit.cover,
     );
   }
