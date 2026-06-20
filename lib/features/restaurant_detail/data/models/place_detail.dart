@@ -119,6 +119,9 @@ class GoogleReview {
     required this.rating,
     this.relativeTime,
     required this.text,
+    this.textLanguageCode,
+    this.originalText,
+    this.originalTextLanguageCode,
   });
 
   final String authorName;
@@ -134,13 +137,35 @@ class GoogleReview {
   /// the app language as `languageCode`, so it comes back in-language).
   final String? relativeTime;
 
-  /// Plain-text review body (HTML stripped/escaped — see [sanitizeReviewText]).
+  /// Plain-text review body as shown — this is the localized/translated text
+  /// when Google auto-translated it (HTML stripped — see [sanitizeReviewText]).
   final String text;
+
+  /// Language of [text] (e.g. `en`). When it differs from
+  /// [originalTextLanguageCode], [text] is a Google auto-translation.
+  final String? textLanguageCode;
+
+  /// The author's original words, plain-text. Null when Google returned no
+  /// separate original (i.e. [text] is already the original).
+  final String? originalText;
+
+  /// Language of [originalText].
+  final String? originalTextLanguageCode;
+
+  /// True when [text] is a Google auto-translation of [originalText] — i.e. an
+  /// original exists in a different language. Drives the "Translated by Google"
+  /// caption + "See original" toggle.
+  bool get isTranslated =>
+      originalText != null &&
+      originalTextLanguageCode != null &&
+      originalTextLanguageCode != textLanguageCode;
 
   factory GoogleReview.fromJson(Map<String, dynamic> json) {
     final author = json['authorAttribution'] as Map<String, dynamic>?;
     final textBlock = json['text'] as Map<String, dynamic>?;
+    final originalBlock = json['originalText'] as Map<String, dynamic>?;
     final rawText = (textBlock?['text'] as String?) ?? '';
+    final rawOriginal = originalBlock?['text'] as String?;
     return GoogleReview(
       authorName: (author?['displayName'] as String?) ?? '',
       authorUri: author?['uri'] as String?,
@@ -148,6 +173,10 @@ class GoogleReview {
       rating: (json['rating'] as num?)?.toDouble() ?? 0,
       relativeTime: json['relativePublishTimeDescription'] as String?,
       text: sanitizeReviewText(rawText),
+      textLanguageCode: textBlock?['languageCode'] as String?,
+      originalText:
+          rawOriginal == null ? null : sanitizeReviewText(rawOriginal),
+      originalTextLanguageCode: originalBlock?['languageCode'] as String?,
     );
   }
 }

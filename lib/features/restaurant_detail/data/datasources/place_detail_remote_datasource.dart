@@ -26,8 +26,8 @@ class PlaceDetailRemoteDatasource {
       'internationalPhoneNumber,websiteUri,rating,userRatingCount,priceLevel,'
       'currentOpeningHours,regularOpeningHours,photos,types,primaryType,'
       'editorialSummary,googleMapsUri,location,businessStatus,'
-      'reviews.rating,reviews.text,reviews.relativePublishTimeDescription,'
-      'reviews.authorAttribution';
+      'reviews.rating,reviews.text,reviews.originalText,'
+      'reviews.relativePublishTimeDescription,reviews.authorAttribution';
 
   Future<PlaceDetail> fetch(
     String placeId, {

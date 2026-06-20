@@ -37,8 +37,16 @@ class GoogleReviewsSection extends ConsumerWidget {
     if (reviews.isEmpty) return const SizedBox.shrink();
 
     final c = AppColors.of(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final lang = ref.watch(appLocaleProvider).languageCode;
     final labels = _Labels.of(lang);
+
+    // Google text-attribution spec: weight 400, 12–16sp, color white / #1F1F1F
+    // / #5E5E5E, contrast ≥ 4.5:1. We use #5E5E5E on the light surface and pure
+    // white on the dark surface so both clear 4.5:1; "Google Maps" is never
+    // bold, never localized, never restyled beyond this.
+    final attributionColor =
+        isDark ? Colors.white : const Color(0xFF5E5E5E);
 
     return Padding(
       padding: const EdgeInsets.only(top: AppConstants.spaceXl),
@@ -53,22 +61,37 @@ class GoogleReviewsSection extends ConsumerWidget {
               AppConstants.spaceSm,
             ),
             child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                // Attribution: the unmodified text "Google Maps" (no logo, never
-                // localized/restyled) embedded in the localized title. The
-                // a11y label names the source explicitly.
+                // Attribution: the unmodified text "Google Maps" rendered to
+                // Google's text-attribution spec — weight 400, ~14sp, neutral
+                // gray/white, single line, Latin, NOT localized. The a11y label
+                // names the source explicitly.
                 Semantics(
                   label: 'Google Maps',
                   child: Text(
-                    labels.title,
+                    'Google Maps',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       fontFamily: 'Pretendard',
-                      fontSize: 16,
-                      fontWeight: FontWeight.w500,
-                      color: c.textPrimary,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w400,
+                      color: attributionColor,
                     ),
+                  ),
+                ),
+                const SizedBox(width: 4),
+                // Localized descriptor word in the app's normal heading style.
+                Text(
+                  labels.descriptor,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontFamily: 'Pretendard',
+                    fontSize: 16,
+                    fontWeight: FontWeight.w500,
+                    color: c.textPrimary,
                   ),
                 ),
                 const SizedBox(width: 6),
@@ -101,7 +124,11 @@ class GoogleReviewsSection extends ConsumerWidget {
             child: Column(
               children: [
                 for (final r in reviews)
-                  _GoogleReviewCard(review: r, onAuthorTap: onAuthorTap),
+                  _GoogleReviewCard(
+                    review: r,
+                    lang: lang,
+                    onAuthorTap: onAuthorTap,
+                  ),
               ],
             ),
           ),
@@ -113,16 +140,38 @@ class GoogleReviewsSection extends ConsumerWidget {
 
 /// One Google review row — avatar + name (tappable → profile) + star rating +
 /// relative time + plain-text body. No photos (the API exposes none per review).
-class _GoogleReviewCard extends StatelessWidget {
-  const _GoogleReviewCard({required this.review, required this.onAuthorTap});
+///
+/// When Google auto-translated the body ([GoogleReview.isTranslated]), the card
+/// shows a subtle "Translated by Google" caption and a "See original" toggle
+/// that swaps to the author's original words (and back). Stateful purely for
+/// that per-card toggle — nothing is persisted.
+class _GoogleReviewCard extends StatefulWidget {
+  const _GoogleReviewCard({
+    required this.review,
+    required this.lang,
+    required this.onAuthorTap,
+  });
 
   final GoogleReview review;
+  final String lang;
   final ValueChanged<String?> onAuthorTap;
+
+  @override
+  State<_GoogleReviewCard> createState() => _GoogleReviewCardState();
+}
+
+class _GoogleReviewCardState extends State<_GoogleReviewCard> {
+  bool _showOriginal = false;
 
   @override
   Widget build(BuildContext context) {
     final c = AppColors.of(context);
+    final review = widget.review;
+    final labels = _Labels.of(widget.lang);
     final hasProfile = review.authorUri != null && review.authorUri!.isNotEmpty;
+    final translated = review.isTranslated;
+    // Default to the shown (translated) text; the toggle swaps to the original.
+    final body = (translated && _showOriginal) ? review.originalText! : review.text;
 
     final header = Row(
       children: [
@@ -172,7 +221,7 @@ class _GoogleReviewCard extends StatelessWidget {
           // required attribution link). Inert when the API gives no URL.
           if (hasProfile)
             InkWell(
-              onTap: () => onAuthorTap(review.authorUri),
+              onTap: () => widget.onAuthorTap(review.authorUri),
               borderRadius: BorderRadius.circular(8),
               child: header,
             )
@@ -196,10 +245,10 @@ class _GoogleReviewCard extends StatelessWidget {
               ],
             ),
           ],
-          if (review.text.isNotEmpty) ...[
+          if (body.isNotEmpty) ...[
             const SizedBox(height: AppConstants.spaceSm),
             Text(
-              review.text,
+              body,
               maxLines: 5,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
@@ -208,6 +257,44 @@ class _GoogleReviewCard extends StatelessWidget {
                 color: c.textPrimary,
                 height: 1.4,
               ),
+            ),
+          ],
+          // Auto-translation disclosure + toggle. Text labels only (never
+          // color-alone). "Google" stays Latin in the caption.
+          if (translated) ...[
+            const SizedBox(height: AppConstants.spaceSm),
+            Row(
+              children: [
+                if (!_showOriginal) ...[
+                  Text(
+                    labels.translatedByGoogle,
+                    style: TextStyle(
+                      fontFamily: 'Pretendard',
+                      fontSize: 11,
+                      color: c.textTertiary,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                ],
+                InkWell(
+                  onTap: () => setState(() => _showOriginal = !_showOriginal),
+                  borderRadius: BorderRadius.circular(4),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 2),
+                    child: Text(
+                      _showOriginal
+                          ? labels.showTranslation
+                          : labels.seeOriginal,
+                      style: TextStyle(
+                        fontFamily: 'Pretendard',
+                        fontSize: 11,
+                        fontWeight: FontWeight.w500,
+                        color: c.primary,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ],
         ],
@@ -252,23 +339,53 @@ class _Avatar extends StatelessWidget {
   }
 }
 
-/// Localized section title (KO / JA / EN). The attribution "Google Maps" stays
-/// unmodified Latin script in every language — only the surrounding word is
-/// translated, per Google's brand policy.
+/// Localized copy (KO / JA / EN). The brand tokens "Google Maps" / "Google"
+/// stay unmodified Latin script in every language — only the surrounding words
+/// are translated, per Google's brand policy.
 class _Labels {
-  const _Labels._({required this.title});
+  const _Labels._({
+    required this.descriptor,
+    required this.translatedByGoogle,
+    required this.seeOriginal,
+    required this.showTranslation,
+  });
 
-  final String title;
+  /// The word that follows the "Google Maps" attribution in the section header.
+  final String descriptor;
+
+  /// Caption shown under an auto-translated review body ("Google" stays Latin).
+  final String translatedByGoogle;
+
+  /// Toggle → swap to the author's original-language text.
+  final String seeOriginal;
+
+  /// Toggle → swap back to the Google translation.
+  final String showTranslation;
 
   static _Labels of(String lang) {
     switch (lang) {
       case 'ja':
-        return const _Labels._(title: 'Google Maps のレビュー');
+        return const _Labels._(
+          descriptor: 'のレビュー',
+          translatedByGoogle: 'Google による翻訳',
+          seeOriginal: '原文を表示',
+          showTranslation: '翻訳を表示',
+        );
       case 'ko':
-        return const _Labels._(title: 'Google Maps 리뷰');
+        return const _Labels._(
+          descriptor: '리뷰',
+          translatedByGoogle: 'Google 번역',
+          seeOriginal: '원문 보기',
+          showTranslation: '번역 보기',
+        );
       case 'en':
       default:
-        return const _Labels._(title: 'Google Maps reviews');
+        return const _Labels._(
+          descriptor: 'reviews',
+          translatedByGoogle: 'Translated by Google',
+          seeOriginal: 'See original',
+          showTranslation: 'Show translation',
+        );
     }
   }
 }
