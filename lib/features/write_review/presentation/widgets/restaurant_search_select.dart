@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/constants/api_constants.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/providers/app_locale_provider.dart';
@@ -203,6 +204,7 @@ class _ResultRow extends StatelessWidget {
                 child: item.photoName != null
                     ? FadeInNetworkImage(
                         url: PlacesApiDatasource.photoUrl(item.photoName!),
+                        headers: kPlacesPhotoHeaders,
                         errorPlaceholder: _ph(c),
                       )
                     : _ph(c),

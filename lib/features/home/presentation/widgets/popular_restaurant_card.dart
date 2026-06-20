@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/analytics/analytics_origin.dart';
+import '../../../../core/constants/api_constants.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/router/app_router.dart';
@@ -107,6 +108,7 @@ class _Photo extends StatelessWidget {
     if (photoName == null) return _placeholder(c);
     return FadeInNetworkImage(
       url: PlacesApiDatasource.photoUrl(photoName!),
+      headers: kPlacesPhotoHeaders,
       width: 150,
       height: 110,
       errorPlaceholder: _placeholder(c),

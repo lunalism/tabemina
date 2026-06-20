@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/constants/api_constants.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../shared/widgets/network_image_fade.dart';
@@ -125,6 +126,7 @@ class _Thumbnail extends StatelessWidget {
         child: photoUrl != null && photoUrl!.isNotEmpty
             ? FadeInNetworkImage(
                 url: photoUrl!,
+                headers: kPlacesPhotoHeaders,
                 errorPlaceholder: _placeholder(c),
               )
             : _placeholder(c),

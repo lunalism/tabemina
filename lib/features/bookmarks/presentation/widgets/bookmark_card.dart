@@ -2,11 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/analytics/analytics_origin.dart';
+import '../../../../core/constants/api_constants.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/router/app_router.dart';
 import '../../../../domain/entities/bookmark_entity.dart';
 import '../../../../shared/widgets/network_image_fade.dart';
+import '../../../home/data/datasources/places_api_datasource.dart';
 import '../../../home/data/models/nearby_restaurant.dart' show PriceLevel;
 import '../bookmarks_labels.dart';
 
@@ -133,24 +135,53 @@ class BookmarkCard extends StatelessWidget {
 class _Thumbnail extends StatelessWidget {
   const _Thumbnail({required this.photoUrl});
 
+  /// The stored bookmark photo value: a bare Places photo resource name for
+  /// bookmarks saved after the key-rotation fix, or a legacy full media URL
+  /// (old key baked in) for older ones. The display URL is rebuilt below with
+  /// the CURRENT key either way.
   final String? photoUrl;
 
   @override
   Widget build(BuildContext context) {
     final c = AppColors.of(context);
+    final displayUrl = _displayUrl(photoUrl);
     return ClipRRect(
       borderRadius: BorderRadius.circular(10),
       child: SizedBox(
         width: 72,
         height: 72,
-        child: photoUrl != null && photoUrl!.isNotEmpty
+        child: displayUrl != null
             ? FadeInNetworkImage(
-                url: photoUrl!,
+                url: displayUrl,
+                headers: kPlacesPhotoHeaders,
                 errorPlaceholder: _placeholder(c),
               )
             : _placeholder(c),
       ),
     );
+  }
+
+  /// Rebuild the media URL with the current API key. Always routes through
+  /// [PlacesApiDatasource.photoUrl] so the URL carries the live key, never a
+  /// stale one persisted in the bookmark.
+  static String? _displayUrl(String? stored) {
+    if (stored == null || stored.isEmpty) return null;
+    return PlacesApiDatasource.photoUrl(_photoNameOf(stored));
+  }
+
+  /// Extract the bare photo resource name from the stored value. New bookmarks
+  /// already store it directly; legacy ones stored a full media URL
+  /// (`https://.../v1/<photoName>/media?...&key=...`), so pull the segment
+  /// between `/v1/` and `/media` back out.
+  static String _photoNameOf(String stored) {
+    if (stored.startsWith('http') || stored.contains('/media')) {
+      final start = stored.indexOf('/v1/');
+      final end = stored.indexOf('/media');
+      if (start != -1 && end != -1 && end > start) {
+        return stored.substring(start + 4, end);
+      }
+    }
+    return stored;
   }
 
   Widget _placeholder(AppColors c) {

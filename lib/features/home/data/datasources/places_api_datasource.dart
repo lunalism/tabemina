@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import '../../../../core/config/api_keys.dart';
+import '../../../../core/constants/api_constants.dart';
 import '../models/nearby_restaurant.dart';
 
 /// Thin client over Google Places (New) — only the endpoints the Home feed
@@ -170,6 +171,7 @@ class PlacesApiDatasource {
       headers: {
         'Content-Type': 'application/json',
         'X-Goog-Api-Key': googleMapsApiKey,
+        'X-Ios-Bundle-Identifier': kIosBundleIdentifier,
         // Search-result rows render formattedAddress + primaryType in addition
         // to the standard fields, so the mask includes them.
         'X-Goog-FieldMask':
@@ -206,6 +208,7 @@ class PlacesApiDatasource {
       headers: {
         'Content-Type': 'application/json',
         'X-Goog-Api-Key': googleMapsApiKey,
+        'X-Ios-Bundle-Identifier': kIosBundleIdentifier,
         'X-Goog-FieldMask': _fieldMask,
       },
       body: jsonEncode({

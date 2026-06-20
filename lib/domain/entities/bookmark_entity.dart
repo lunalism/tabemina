@@ -27,9 +27,11 @@ class BookmarkEntity {
   final double? placeLat;
   final double? placeLng;
 
-  /// Fully-formed photo URL (Google Places photo with API key baked in)
-  /// rather than the raw `places/.../photos/...` reference, so cards can
-  /// render without re-importing the datasource just for the URL builder.
+  /// Bare Places photo *resource name* (e.g. `places/.../photos/...`). The
+  /// display URL is rebuilt with the current API key at render time so a key
+  /// rotation can't strand a dead `?key=` in saved bookmarks. Legacy bookmarks
+  /// may still hold a full media URL here; the render path tolerates both.
+  /// (Field name kept as `placePhotoUrl` to avoid a Firestore schema migration.)
   final String? placePhotoUrl;
   final double? placeRating;
   final int? userRatingCount;

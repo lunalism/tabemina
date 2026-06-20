@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import '../../../../core/config/api_keys.dart';
+import '../../../../core/constants/api_constants.dart';
 import '../models/place_detail.dart';
 
 /// Thin client over Google Places (New) — Place Details endpoint.
@@ -40,6 +41,7 @@ class PlaceDetailRemoteDatasource {
       uri,
       headers: {
         'X-Goog-Api-Key': googleMapsApiKey,
+        'X-Ios-Bundle-Identifier': kIosBundleIdentifier,
         'X-Goog-FieldMask': _fieldMask,
       },
     );

@@ -30,12 +30,19 @@ class FadeInNetworkImage extends StatelessWidget {
     this.borderRadius = 0,
     this.iconSize = 24,
     this.fadeInDuration = const Duration(milliseconds: 200),
+    this.headers,
   });
 
   final String url;
   final double? width;
   final double? height;
   final BoxFit fit;
+
+  /// Optional request headers for the underlying GET. Used by Places photo
+  /// renders to send `X-Ios-Bundle-Identifier` so the request satisfies the
+  /// Google Maps Platform key's iOS application restriction. Null for images
+  /// that need no auth header (Firebase Storage, googleusercontent avatars).
+  final Map<String, String>? headers;
 
   /// Override for the loading state. Defaults to a bare [ShimmerBox].
   final Widget? placeholder;
@@ -52,6 +59,7 @@ class FadeInNetworkImage extends StatelessWidget {
   Widget build(BuildContext context) {
     return Image.network(
       url,
+      headers: headers,
       width: width,
       height: height,
       fit: fit,

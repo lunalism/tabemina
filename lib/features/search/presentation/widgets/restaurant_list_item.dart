@@ -3,6 +3,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/analytics/analytics_origin.dart';
+import '../../../../core/constants/api_constants.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/router/app_router.dart';
@@ -94,6 +95,7 @@ class _Thumbnail extends StatelessWidget {
         child: photoName != null
             ? FadeInNetworkImage(
                 url: PlacesApiDatasource.photoUrl(photoName!, maxHeightPx: 200),
+                headers: kPlacesPhotoHeaders,
                 errorPlaceholder: _placeholder(c),
               )
             : _placeholder(c),

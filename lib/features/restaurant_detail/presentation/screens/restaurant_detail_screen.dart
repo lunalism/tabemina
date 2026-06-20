@@ -379,8 +379,12 @@ Future<void> _toggleBookmark(
       placeAddress: detail.formattedAddress,
       placeLat: detail.lat,
       placeLng: detail.lng,
+      // Store the bare Places photo *resource name* (e.g. places/ID/photos/REF),
+      // NOT a full media URL — the display URL is rebuilt with the CURRENT key
+      // at render time, so a key rotation can't strand a dead ?key= in saved
+      // bookmarks. Field name stays 'placePhotoUrl' to avoid a schema migration.
       placePhotoUrl: detail.photoNames.isNotEmpty
-          ? PlaceDetailRemoteDatasource.photoUrl(detail.photoNames.first)
+          ? detail.photoNames.first
           : null,
       placeRating: detail.rating,
       userRatingCount: detail.userRatingCount,

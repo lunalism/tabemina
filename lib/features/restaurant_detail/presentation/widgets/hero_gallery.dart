@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/constants/api_constants.dart';
 import '../../../../shared/widgets/network_image_fade.dart';
 import '../../data/datasources/place_detail_remote_datasource.dart';
 
@@ -140,6 +141,7 @@ class _GalleryImage extends StatelessWidget {
     // loose child constraints and appear letterboxed.
     return FadeInNetworkImage(
       url: PlaceDetailRemoteDatasource.photoUrl(photoName, maxHeightPx: 1000),
+      headers: kPlacesPhotoHeaders,
       width: double.infinity,
       height: double.infinity,
       placeholder: Container(color: const Color(0xFF1A1A18)),
