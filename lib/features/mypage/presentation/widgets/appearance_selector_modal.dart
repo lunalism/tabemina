@@ -5,6 +5,7 @@ import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/providers/app_locale_provider.dart';
 import '../../../../core/providers/app_theme_mode_provider.dart';
+import '../mypage_labels.dart';
 
 /// Bottom sheet for picking the app's appearance: System / Light / Dark.
 ///
@@ -57,7 +58,7 @@ class AppearanceSelectorModal extends ConsumerWidget {
               child: Align(
                 alignment: Alignment.centerLeft,
                 child: Text(
-                  _titleFor(lang),
+                  MyPageLabels.of(lang).appearanceLabel,
                   style: TextStyle(
                     fontFamily: 'Pretendard',
                     fontSize: 16,
@@ -83,18 +84,6 @@ class AppearanceSelectorModal extends ConsumerWidget {
         ),
       ),
     );
-  }
-
-  static String _titleFor(String lang) {
-    switch (lang) {
-      case 'ja':
-        return 'テーマ';
-      case 'ko':
-        return '테마';
-      case 'en':
-      default:
-        return 'Appearance';
-    }
   }
 }
 

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/providers/app_locale_provider.dart';
+import '../mypage_labels.dart';
 
 /// Bottom-sheet picker for the app language.
 ///
@@ -28,6 +29,7 @@ class LanguageSelectorModal extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final c = AppColors.of(context);
     final current = ref.watch(appLocaleProvider);
+    final title = MyPageLabels.of(current.languageCode).languageLabel;
 
     return SafeArea(
       child: Container(
@@ -60,7 +62,7 @@ class LanguageSelectorModal extends ConsumerWidget {
               child: Align(
                 alignment: Alignment.centerLeft,
                 child: Text(
-                  'Language',
+                  title,
                   style: TextStyle(
                     fontFamily: 'Pretendard',
                     fontSize: 16,
