@@ -25,6 +25,7 @@ class PlaceDetail {
     this.primaryType,
     this.businessStatus,
     this.currentOpeningHours,
+    this.reviews = const [],
   });
 
   final String id;
@@ -52,6 +53,14 @@ class PlaceDetail {
   final String? businessStatus;
   final OpeningHours? currentOpeningHours;
 
+  /// Up to 5 live Google reviews piggybacked on the same Place Details call.
+  ///
+  /// COMPLIANCE: this list is held in memory only for the lifetime of the open
+  /// detail screen and is NEVER cached or persisted (no Firestore / DB / prefs)
+  /// per Google Places policy. It is intentionally excluded from any stored
+  /// representation (e.g. the bookmark entity).
+  final List<GoogleReview> reviews;
+
   factory PlaceDetail.fromJson(Map<String, dynamic> json) {
     final displayName = json['displayName'] as Map<String, dynamic>?;
     final editorialSummary =
@@ -59,6 +68,7 @@ class PlaceDetail {
     final location = json['location'] as Map<String, dynamic>?;
     final photos = (json['photos'] as List?) ?? const [];
     final types = (json['types'] as List?) ?? const [];
+    final reviews = (json['reviews'] as List?) ?? const [];
     final hours = json['currentOpeningHours'] as Map<String, dynamic>? ??
         json['regularOpeningHours'] as Map<String, dynamic>?;
 
@@ -85,8 +95,82 @@ class PlaceDetail {
       primaryType: json['primaryType'] as String?,
       businessStatus: json['businessStatus'] as String?,
       currentOpeningHours: hours == null ? null : OpeningHours.fromJson(hours),
+      reviews: [
+        for (final r in reviews)
+          if (r is Map<String, dynamic>) GoogleReview.fromJson(r),
+      ],
     );
   }
+}
+
+/// A single live Google review. Surfaced as a clearly-labeled SECONDARY section
+/// on the detail page (Tabemina's own reviews stay primary).
+///
+/// COMPLIANCE: never cached/stored — built fresh from each live Place Details
+/// response and kept only in memory for the open screen. Carries the Google
+/// attribution data the policy requires: author display name, a link to the
+/// author's Google profile ([authorUri]), and their avatar ([authorPhotoUri]).
+/// [text] is coerced to plain text via [sanitizeReviewText].
+class GoogleReview {
+  const GoogleReview({
+    required this.authorName,
+    this.authorUri,
+    this.authorPhotoUri,
+    required this.rating,
+    this.relativeTime,
+    required this.text,
+  });
+
+  final String authorName;
+
+  /// Link to the author's Google Maps contributor profile (tappable).
+  final String? authorUri;
+
+  /// Author avatar URL (googleusercontent); safe for `Image.network`.
+  final String? authorPhotoUri;
+  final double rating;
+
+  /// Localized "3 months ago"-style description straight from the API (we pass
+  /// the app language as `languageCode`, so it comes back in-language).
+  final String? relativeTime;
+
+  /// Plain-text review body (HTML stripped/escaped — see [sanitizeReviewText]).
+  final String text;
+
+  factory GoogleReview.fromJson(Map<String, dynamic> json) {
+    final author = json['authorAttribution'] as Map<String, dynamic>?;
+    final textBlock = json['text'] as Map<String, dynamic>?;
+    final rawText = (textBlock?['text'] as String?) ?? '';
+    return GoogleReview(
+      authorName: (author?['displayName'] as String?) ?? '',
+      authorUri: author?['uri'] as String?,
+      authorPhotoUri: author?['photoUri'] as String?,
+      rating: (json['rating'] as num?)?.toDouble() ?? 0,
+      relativeTime: json['relativePublishTimeDescription'] as String?,
+      text: sanitizeReviewText(rawText),
+    );
+  }
+}
+
+/// Defensive plain-text coercion for Google review bodies.
+///
+/// The Places API (New) returns plain text, but we strip any stray HTML tags
+/// and unescape the common entities so the string drops straight into a [Text]
+/// widget (which never interprets markup) — no HTML is ever rendered, closing
+/// off any injection vector.
+String sanitizeReviewText(String raw) {
+  if (raw.isEmpty) return '';
+  // Remove any tag-like sequences first, then unescape common entities. Any
+  // entity that decodes back to `<`/`>` is still shown literally by [Text].
+  final stripped = raw.replaceAll(RegExp(r'<[^>]*>'), '');
+  return stripped
+      .replaceAll('&amp;', '&')
+      .replaceAll('&lt;', '<')
+      .replaceAll('&gt;', '>')
+      .replaceAll('&quot;', '"')
+      .replaceAll('&#34;', '"')
+      .replaceAll('&#39;', "'")
+      .trim();
 }
 
 /// Open hours snapshot — `openNow` is the live computed flag, and

@@ -28,8 +28,8 @@ import '../widgets/detail_bottom_bar.dart';
 import '../widgets/hero_gallery.dart';
 import '../widgets/info_grid.dart';
 import '../widgets/info_section.dart';
+import '../widgets/google_reviews_section.dart';
 import '../widgets/mini_map.dart';
-import '../widgets/review_card.dart';
 import '../widgets/tabemina_reviews_section.dart';
 
 /// Full restaurant detail page — hero gallery, info, action row, info grid,
@@ -167,127 +167,14 @@ class _DetailContent extends StatelessWidget {
             onWriteReview: onWriteReview,
           ),
         ),
-        const SliverToBoxAdapter(child: _ReviewsSection()),
+        SliverToBoxAdapter(
+          child: GoogleReviewsSection(
+            reviews: detail.reviews,
+            onAuthorTap: _openExternalUrl,
+          ),
+        ),
         const SliverToBoxAdapter(child: SizedBox(height: 100)),
       ],
-    );
-  }
-}
-
-class _ReviewsSection extends StatelessWidget {
-  const _ReviewsSection();
-
-  static const _mockReviews = <DetailReviewData>[
-    DetailReviewData(
-      initials: 'YT',
-      avatarColor: AppColors.brandCoralLight,
-      name: 'Yuki T.',
-      date: '3 days ago',
-      rating: 4.5,
-      comment:
-          'Amazing ramen! The broth was rich and flavorful. Definitely coming back.',
-      photoCount: 2,
-    ),
-    DetailReviewData(
-      initials: 'ML',
-      avatarColor: Color(0xFF5DCAA5),
-      name: 'Mike L.',
-      date: '1 week ago',
-      rating: 5.0,
-      comment:
-          'Best tonkatsu I\'ve ever had. Perfectly crispy on the outside, juicy inside.',
-      photoCount: 1,
-    ),
-    DetailReviewData(
-      initials: 'さ',
-      avatarColor: Color(0xFF85B7EB),
-      name: 'さくら',
-      date: '2 weeks ago',
-      rating: 4.0,
-      comment: 'コスパがいい。ランチセットがお得です。',
-      photoCount: 0,
-    ),
-  ];
-
-  @override
-  Widget build(BuildContext context) {
-    final c = AppColors.of(context);
-    return Padding(
-      padding: const EdgeInsets.only(top: AppConstants.spaceXl),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(
-              AppConstants.spaceLg,
-              0,
-              AppConstants.spaceLg,
-              AppConstants.spaceSm,
-            ),
-            child: Row(
-              children: [
-                Text(
-                  'Google Reviews',
-                  style: TextStyle(
-                    fontFamily: 'Pretendard',
-                    fontSize: 16,
-                    fontWeight: FontWeight.w500,
-                    color: c.textPrimary,
-                  ),
-                ),
-                const SizedBox(width: 6),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 6,
-                    vertical: 2,
-                  ),
-                  decoration: BoxDecoration(
-                    color: c.bgSkeleton,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    '${_mockReviews.length}',
-                    style: TextStyle(
-                      fontFamily: 'Pretendard',
-                      fontSize: 11,
-                      fontWeight: FontWeight.w500,
-                      color: c.textSecondary,
-                    ),
-                  ),
-                ),
-                const Spacer(),
-                InkWell(
-                  onTap: () {},
-                  borderRadius: BorderRadius.circular(AppConstants.radiusSm),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: AppConstants.spaceXs,
-                      vertical: 2,
-                    ),
-                    child: Text(
-                      'See all >',
-                      style: TextStyle(
-                        fontFamily: 'Pretendard',
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
-                        color: c.primary,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: AppConstants.spaceLg),
-            child: Column(
-              children: [
-                for (final r in _mockReviews) DetailReviewCard(data: r),
-              ],
-            ),
-          ),
-        ],
-      ),
     );
   }
 }

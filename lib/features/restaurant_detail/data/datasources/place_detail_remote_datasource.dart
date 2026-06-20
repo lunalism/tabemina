@@ -17,11 +17,17 @@ class PlaceDetailRemoteDatasource {
   final http.Client _client;
 
   static const String _baseUrl = 'https://places.googleapis.com/v1';
+  // NOTE: requesting `reviews.*` on this same Place Details call (rather than a
+  // second request — that would double-bill) moves this call into the higher
+  // Enterprise + Atmosphere SKU. That is expected/accepted. We pull only the
+  // review subfields we render, not the whole `reviews` object.
   static const String _fieldMask =
       'id,displayName,formattedAddress,nationalPhoneNumber,'
       'internationalPhoneNumber,websiteUri,rating,userRatingCount,priceLevel,'
       'currentOpeningHours,regularOpeningHours,photos,types,primaryType,'
-      'editorialSummary,googleMapsUri,location,businessStatus';
+      'editorialSummary,googleMapsUri,location,businessStatus,'
+      'reviews.rating,reviews.text,reviews.relativePublishTimeDescription,'
+      'reviews.authorAttribution';
 
   Future<PlaceDetail> fetch(
     String placeId, {
