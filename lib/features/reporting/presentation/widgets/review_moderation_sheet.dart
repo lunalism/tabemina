@@ -23,6 +23,9 @@ class ReviewModerationSheet {
   }) {
     return showModalBottomSheet<ReviewModerationAction>(
       context: context,
+      // Root navigator so the sheet layers above the floating nav bar when the
+      // review is long-pressed from a shell tab (e.g. the Home feed).
+      useRootNavigator: true,
       backgroundColor: Colors.transparent,
       builder: (_) => _Sheet(
         header: header,

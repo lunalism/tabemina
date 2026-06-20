@@ -20,6 +20,10 @@ import '../providers/auth_providers.dart';
 Future<UserEntity?> showLoginBottomSheet(BuildContext context) {
   return showModalBottomSheet<UserEntity?>(
     context: context,
+    // Present on the root navigator so the sheet layers ABOVE the floating nav
+    // bar (which lives in the shell scaffold's Stack); otherwise the last
+    // button is painted behind the bar and is untappable.
+    useRootNavigator: true,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
     builder: (_) => const LoginBottomSheet(),

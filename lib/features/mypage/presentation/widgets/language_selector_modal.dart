@@ -20,6 +20,8 @@ class LanguageSelectorModal extends ConsumerWidget {
   static Future<void> show(BuildContext context) {
     return showModalBottomSheet<void>(
       context: context,
+      // Root navigator so the sheet layers above the floating nav bar.
+      useRootNavigator: true,
       backgroundColor: Colors.transparent,
       builder: (_) => const LanguageSelectorModal(),
     );
