@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_constants.dart';
+import '../../../../core/providers/app_locale_provider.dart';
+import '../../../../shared/widgets/app_state_labels.dart';
 import '../providers/popular_restaurants_provider.dart';
 import 'popular_card_skeleton.dart';
 import 'popular_restaurant_card.dart';
@@ -18,22 +20,27 @@ class PopularSection extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final lang = ref.watch(appLocaleProvider).languageCode;
+    final labels = _Labels.of(lang);
+    final retryLabel = AppStateLabels.of(lang).errorNetworkCta;
     final async = ref.watch(popularRestaurantsProvider);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const _Header(),
+        _Header(title: labels.title, seeAll: labels.seeAll),
         const SizedBox(height: AppConstants.spaceSm),
         SizedBox(
           height: _carouselHeight,
           child: async.when(
             loading: () => const _LoadingRow(),
             error: (_, _) => _ErrorState(
+              message: labels.errorMessage,
+              retryLabel: retryLabel,
               onRetry: () => ref.invalidate(popularRestaurantsProvider),
             ),
             data: (items) => items.isEmpty
-                ? const _EmptyState()
+                ? _EmptyState(message: labels.emptyMessage)
                 : _Carousel(items: items),
           ),
         ),
@@ -43,7 +50,10 @@ class PopularSection extends ConsumerWidget {
 }
 
 class _Header extends StatelessWidget {
-  const _Header();
+  const _Header({required this.title, required this.seeAll});
+
+  final String title;
+  final String seeAll;
 
   @override
   Widget build(BuildContext context) {
@@ -65,7 +75,7 @@ class _Header extends StatelessWidget {
           ),
           const SizedBox(width: 6),
           Text(
-            'Popular near you',
+            title,
             style: TextStyle(
               fontFamily: 'Pretendard',
               fontSize: 16,
@@ -83,7 +93,7 @@ class _Header extends StatelessWidget {
                 vertical: 2,
               ),
               child: Text(
-                'See all >',
+                seeAll,
                 style: TextStyle(
                   fontFamily: 'Pretendard',
                   fontSize: 12,
@@ -139,7 +149,9 @@ class _LoadingRow extends StatelessWidget {
 }
 
 class _EmptyState extends StatelessWidget {
-  const _EmptyState();
+  const _EmptyState({required this.message});
+
+  final String message;
 
   @override
   Widget build(BuildContext context) {
@@ -151,7 +163,7 @@ class _EmptyState extends StatelessWidget {
           Icon(Icons.location_off_outlined, size: 32, color: c.textTertiary),
           const SizedBox(height: AppConstants.spaceSm),
           Text(
-            'No restaurants found nearby',
+            message,
             style: TextStyle(
               fontFamily: 'Pretendard',
               fontSize: 13,
@@ -165,8 +177,14 @@ class _EmptyState extends StatelessWidget {
 }
 
 class _ErrorState extends StatelessWidget {
-  const _ErrorState({required this.onRetry});
+  const _ErrorState({
+    required this.message,
+    required this.retryLabel,
+    required this.onRetry,
+  });
 
+  final String message;
+  final String retryLabel;
   final VoidCallback onRetry;
 
   @override
@@ -177,7 +195,7 @@ class _ErrorState extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(
-            "Couldn't load restaurants",
+            message,
             style: TextStyle(
               fontFamily: 'Pretendard',
               fontSize: 13,
@@ -195,9 +213,9 @@ class _ErrorState extends StatelessWidget {
                 borderRadius: BorderRadius.circular(AppConstants.radiusFull),
               ),
             ),
-            child: const Text(
-              'Retry',
-              style: TextStyle(
+            child: Text(
+              retryLabel,
+              style: const TextStyle(
                 fontFamily: 'Pretendard',
                 fontSize: 12,
                 fontWeight: FontWeight.w500,
@@ -207,5 +225,50 @@ class _ErrorState extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+/// Localized section chrome for "Popular near you" (KO / JA / EN), following
+/// the project's manual `XxxLabels.of(lang)` convention. The "See all" value
+/// is kept identical to the Latest-reviews / Cafes sections so the affordance
+/// reads the same everywhere; the Retry CTA reuses [AppStateLabels].
+class _Labels {
+  const _Labels._({
+    required this.title,
+    required this.seeAll,
+    required this.emptyMessage,
+    required this.errorMessage,
+  });
+
+  final String title;
+  final String seeAll;
+  final String emptyMessage;
+  final String errorMessage;
+
+  static _Labels of(String lang) {
+    switch (lang) {
+      case 'ja':
+        return const _Labels._(
+          title: '近くの人気店',
+          seeAll: 'すべて表示 >',
+          emptyMessage: '近くにお店が見つかりません',
+          errorMessage: 'お店を読み込めませんでした',
+        );
+      case 'ko':
+        return const _Labels._(
+          title: '근처 인기 맛집',
+          seeAll: '모두 보기 >',
+          emptyMessage: '근처에 맛집이 없어요',
+          errorMessage: '맛집을 불러올 수 없어요',
+        );
+      case 'en':
+      default:
+        return const _Labels._(
+          title: 'Popular near you',
+          seeAll: 'See all >',
+          emptyMessage: 'No restaurants found nearby',
+          errorMessage: "Couldn't load restaurants",
+        );
+    }
   }
 }
