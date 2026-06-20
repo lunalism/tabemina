@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/providers/app_locale_provider.dart';
+import '../../../../core/providers/location_providers.dart';
 import '../providers/search_providers.dart';
 
 /// Floating, pill-shaped search bar drawn over the map.
@@ -64,6 +65,21 @@ class _SearchBarOverlayState extends ConsumerState<SearchBarOverlay> {
     final topInset = MediaQuery.of(context).padding.top;
     final lang = ref.watch(appLocaleProvider).languageCode;
     final hasText = _controller.text.isNotEmpty;
+
+    // Location badge shows the resolved area name (same source as the Home
+    // location pill); until that resolves — or when no fix is available — it
+    // falls back to a localized neutral label rather than a hardcoded city.
+    final resolvedArea = ref.watch(currentCityProvider).maybeWhen(
+      data: (name) => (name == null || name.isEmpty) ? null : name,
+      orElse: () => null,
+    );
+    final areaLabel =
+        resolvedArea ??
+        switch (lang) {
+          'ja' => '現在地',
+          'ko' => '현재 위치',
+          _ => 'Current area',
+        };
 
     return Padding(
       padding: EdgeInsets.fromLTRB(
@@ -145,7 +161,7 @@ class _SearchBarOverlayState extends ConsumerState<SearchBarOverlay> {
                   ),
                 )
               else
-                _LocationBadge(label: 'Tokyo', color: c.primary),
+                _LocationBadge(label: areaLabel, color: c.primary),
             ],
           ),
         ),

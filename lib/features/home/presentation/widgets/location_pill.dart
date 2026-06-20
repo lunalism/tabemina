@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_constants.dart';
+import '../../../../core/providers/app_locale_provider.dart';
 import '../../../../core/providers/location_providers.dart';
 
 /// Inline pill that shows the user's resolved city (e.g. "Tokyo") with a
@@ -14,10 +15,16 @@ class LocationPill extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final c = AppColors.of(context);
+    final lang = ref.watch(appLocaleProvider).languageCode;
+    final locating = switch (lang) {
+      'ja' => '現在地を取得中...',
+      'ko' => '위치 확인 중...',
+      _ => 'Locating...',
+    };
     final city = ref.watch(currentCityProvider);
     final label = city.maybeWhen(
-      data: (name) => name ?? 'Locating...',
-      orElse: () => 'Locating...',
+      data: (name) => name ?? locating,
+      orElse: () => locating,
     );
 
     return Padding(
