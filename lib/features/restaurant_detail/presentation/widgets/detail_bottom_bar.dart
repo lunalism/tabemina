@@ -3,7 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_constants.dart';
+import '../../../../core/providers/app_locale_provider.dart';
 import '../../../../presentation/providers/bookmark_providers.dart';
+import '../../../../shared/widgets/tab_scaffold.dart';
 
 /// Sticky bottom action bar — primary "Write review" CTA plus square
 /// save/route buttons.
@@ -13,7 +15,7 @@ import '../../../../presentation/providers/bookmark_providers.dart';
 /// rebuilds just the 40×40 icon — not the whole detail screen. We don't
 /// animate the icon swap: the bounce was masking a layout shake we
 /// couldn't fully suppress, and a plain swap reads cleaner anyway.
-class DetailBottomBar extends StatelessWidget {
+class DetailBottomBar extends ConsumerWidget {
   const DetailBottomBar({
     super.key,
     required this.placeId,
@@ -28,8 +30,11 @@ class DetailBottomBar extends StatelessWidget {
   final VoidCallback onSaveToggle;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final c = AppColors.of(context);
+    final writeReviewLabel = NavLabels.of(
+      ref.watch(appLocaleProvider).languageCode,
+    ).writeReview;
     return Container(
       decoration: BoxDecoration(
         color: c.bgCard,
@@ -47,7 +52,10 @@ class DetailBottomBar extends StatelessWidget {
           child: Row(
             children: [
               Expanded(
-                child: _PrimaryCta(onTap: onWriteReview),
+                child: _PrimaryCta(
+                  label: writeReviewLabel,
+                  onTap: onWriteReview,
+                ),
               ),
               const SizedBox(width: 8),
               _BookmarkSquareButton(
@@ -69,8 +77,9 @@ class DetailBottomBar extends StatelessWidget {
 }
 
 class _PrimaryCta extends StatelessWidget {
-  const _PrimaryCta({required this.onTap});
+  const _PrimaryCta({required this.label, required this.onTap});
 
+  final String label;
   final VoidCallback onTap;
 
   @override
@@ -88,12 +97,12 @@ class _PrimaryCta extends StatelessWidget {
         alignment: Alignment.center,
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
-          children: const [
-            Icon(Icons.edit_outlined, size: 16, color: AppColors.onPrimary),
-            SizedBox(width: 6),
+          children: [
+            const Icon(Icons.edit_outlined, size: 16, color: AppColors.onPrimary),
+            const SizedBox(width: 6),
             Text(
-              'Write review',
-              style: TextStyle(
+              label,
+              style: const TextStyle(
                 fontFamily: 'Pretendard',
                 fontSize: 14,
                 fontWeight: FontWeight.w500,

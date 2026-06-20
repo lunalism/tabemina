@@ -3,7 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_constants.dart';
+import '../../../../core/providers/app_locale_provider.dart';
 import '../../../../presentation/providers/bookmark_providers.dart';
+import '../../../../shared/widgets/tab_scaffold.dart';
+import '../detail_labels.dart';
 
 /// Four-up action row under the info header: Review / Save / Route / Share.
 ///
@@ -13,7 +16,7 @@ import '../../../../presentation/providers/bookmark_providers.dart';
 /// in [_BookmarkActionButton] (its own ConsumerWidget) so a bookmark
 /// toggle rebuilds only the Save tile — the rest of the scroll body
 /// stays put. The icon swap is intentionally un-animated.
-class ActionButtons extends StatelessWidget {
+class ActionButtons extends ConsumerWidget {
   const ActionButtons({
     super.key,
     required this.placeId,
@@ -30,8 +33,11 @@ class ActionButtons extends StatelessWidget {
   final VoidCallback onShare;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final c = AppColors.of(context);
+    final lang = ref.watch(appLocaleProvider).languageCode;
+    final labels = DetailLabels.of(lang);
+    final reviewLabel = NavLabels.of(lang).review;
     return Padding(
       padding: const EdgeInsets.fromLTRB(
         AppConstants.spaceLg,
@@ -44,7 +50,7 @@ class ActionButtons extends StatelessWidget {
           Expanded(
             child: _ActionButton(
               icon: Icons.edit_outlined,
-              label: 'Review',
+              label: reviewLabel,
               filled: true,
               color: c.primary,
               onTap: onReview,
@@ -61,7 +67,7 @@ class ActionButtons extends StatelessWidget {
           Expanded(
             child: _ActionButton(
               icon: Icons.navigation_outlined,
-              label: 'Route',
+              label: labels.route,
               color: c.textSecondary,
               onTap: onRoute,
             ),
@@ -70,7 +76,7 @@ class ActionButtons extends StatelessWidget {
           Expanded(
             child: _ActionButton(
               icon: Icons.share_outlined,
-              label: 'Share',
+              label: labels.share,
               color: c.textSecondary,
               onTap: onShare,
             ),
@@ -144,9 +150,10 @@ class _BookmarkActionButton extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final c = AppColors.of(context);
     final saved = ref.watch(isBookmarkedProvider(placeId));
+    final lang = ref.watch(appLocaleProvider).languageCode;
     return _ActionButton(
       icon: saved ? Icons.bookmark_rounded : Icons.bookmark_outline_rounded,
-      label: 'Save',
+      label: DetailLabels.of(lang).save,
       color: saved ? c.primary : c.textSecondary,
       onTap: onTap,
     );

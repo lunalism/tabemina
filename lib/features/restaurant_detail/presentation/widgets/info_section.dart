@@ -1,19 +1,23 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_constants.dart';
+import '../../../../core/providers/app_locale_provider.dart';
 import '../../data/models/place_detail.dart';
+import '../detail_labels.dart';
 
 /// Name + category line + rating + open-status chip + editorial blurb.
-class InfoSection extends StatelessWidget {
+class InfoSection extends ConsumerWidget {
   const InfoSection({super.key, required this.detail});
 
   final PlaceDetail detail;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final c = AppColors.of(context);
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final labels = DetailLabels.of(ref.watch(appLocaleProvider).languageCode);
 
     final categoryLine = _buildCategoryLine();
     final openNow = detail.currentOpeningHours?.openNow;
@@ -67,7 +71,7 @@ class InfoSection extends StatelessWidget {
                 if (detail.userRatingCount != null) ...[
                   const SizedBox(width: 4),
                   Text(
-                    '(${detail.userRatingCount} reviews)',
+                    labels.reviewCount(detail.userRatingCount!),
                     style: TextStyle(
                       fontFamily: 'Pretendard',
                       fontSize: 13,
@@ -77,7 +81,8 @@ class InfoSection extends StatelessWidget {
                 ],
                 const SizedBox(width: AppConstants.spaceSm),
               ],
-              if (openNow != null) _StatusChip(open: openNow, isDark: isDark),
+              if (openNow != null)
+                _StatusChip(open: openNow, isDark: isDark, labels: labels),
             ],
           ),
           if (detail.editorialSummary != null &&
@@ -113,10 +118,15 @@ class InfoSection extends StatelessWidget {
 }
 
 class _StatusChip extends StatelessWidget {
-  const _StatusChip({required this.open, required this.isDark});
+  const _StatusChip({
+    required this.open,
+    required this.isDark,
+    required this.labels,
+  });
 
   final bool open;
   final bool isDark;
+  final DetailLabels labels;
 
   @override
   Widget build(BuildContext context) {
@@ -140,7 +150,7 @@ class _StatusChip extends StatelessWidget {
           ),
           const SizedBox(width: 4),
           Text(
-            open ? 'Open now' : 'Closed',
+            open ? labels.openNow : labels.closed,
             style: TextStyle(
               fontFamily: 'Pretendard',
               fontSize: 11,
