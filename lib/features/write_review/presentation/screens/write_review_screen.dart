@@ -1018,7 +1018,7 @@ class _Labels {
     chooseFromGallery: 'ギャラリーから選ぶ',
     rating: '評価',
     ratingAdjectives: const {
-      1: '残念',
+      1: 'いまいち',
       2: 'まあまあ',
       3: '良い',
       4: 'とても良い!',

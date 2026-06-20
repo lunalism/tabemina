@@ -52,9 +52,9 @@ const Map<String, Map<String, String>> _tagLabels = {
 
   // Price (label only — price ranges live separately so we can localize the
   // yen / won amount without re-keying the chip)
-  'budget': {'en': 'Budget', 'ja': '安め', 'ko': '저렴'},
+  'budget': {'en': 'Budget', 'ja': '安め', 'ko': '가성비'},
   'mid': {'en': 'Mid', 'ja': '普通', 'ko': '보통'},
-  'high': {'en': 'High', 'ja': '高め', 'ko': '비쌈'},
+  'high': {'en': 'High', 'ja': '高め', 'ko': '고가'},
   'premium': {'en': 'Premium', 'ja': '高級', 'ko': '프리미엄'},
 };
 

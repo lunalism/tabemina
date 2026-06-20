@@ -128,7 +128,7 @@ class AppStateLabels {
 
   static const _ja = AppStateLabels(
     emptyReviewsTitle: 'まだレビューがありません',
-    emptyReviewsDescription: '最初の食体験をシェアしましょう！30秒で完了します。',
+    emptyReviewsDescription: '最初のグルメ体験をシェアしましょう！30秒で完了します。',
     emptyReviewsCta: '最初のレビューを書く',
     emptyBookmarksTitle: '保存した場所がありません',
     emptyBookmarksDescription: 'レストランのブックマークアイコンをタップして保存しましょう。',
@@ -156,7 +156,7 @@ class AppStateLabels {
 
   static const _ko = AppStateLabels(
     emptyReviewsTitle: '아직 리뷰가 없어요',
-    emptyReviewsDescription: '첫 번째 맛집 경험을 공유해보세요! 30초면 돼요.',
+    emptyReviewsDescription: '첫 맛집 경험을 공유해보세요! 30초면 충분합니다.',
     emptyReviewsCta: '첫 리뷰 쓰기',
     emptyBookmarksTitle: '저장한 곳이 없어요',
     emptyBookmarksDescription: '음식점의 북마크 아이콘을 탭해서 저장해보세요.',
