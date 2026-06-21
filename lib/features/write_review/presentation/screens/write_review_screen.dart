@@ -21,6 +21,7 @@ import '../../../../presentation/providers/review_providers.dart';
 import '../../../../shared/widgets/cooldown_labels.dart';
 import '../../../../shared/widgets/tabemina_snackbar.dart';
 import '../../data/services/photo_upload_manager.dart';
+import '../../domain/models/photo_upload_state.dart';
 import '../../domain/models/review_draft.dart';
 import '../../domain/models/tag_definitions.dart';
 import '../widgets/anonymous_toggle.dart';
@@ -133,8 +134,15 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
     } else {
       _restaurant = widget.initialRestaurant;
     }
-    _comment.addListener(_onChanged);
-    _uploadManager.photosNotifier.addListener(_onChanged);
+    // Comment: parent rebuild ONLY on the empty<->non-empty transition (all
+    // build() depends on, via _hasContent → PopScope.canPop + top-bar Draft
+    // button). Per-keystroke text changes never touch the parent — the char
+    // counter is scoped to the controller and the Post button doesn't gate on
+    // the comment. (Draft auto-save listener below is preserved.)
+    _commentWasEmpty = _comment.text.isEmpty;
+    _comment.addListener(_onCommentEmptinessChanged);
+    // Photos: NO blanket parent setState on upload-progress ticks — the photo
+    // strip and the Post button watch photosNotifier directly (see build()).
     // Draft is for NEW reviews only — never auto-save or restore in edit mode.
     if (!_isEdit) {
       _comment.addListener(_onCommentChangedForDraft);
@@ -143,15 +151,22 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
     }
   }
 
-  void _onChanged() {
-    if (mounted) setState(() {});
+  /// Tracks comment emptiness so a parent rebuild fires ONLY when the comment
+  /// crosses empty<->non-empty (what the _hasContent-driven UI needs), not on
+  /// every keystroke.
+  bool _commentWasEmpty = true;
+
+  void _onCommentEmptinessChanged() {
+    final isEmpty = _comment.text.isEmpty;
+    if (isEmpty == _commentWasEmpty) return; // same emptiness → no rebuild
+    _commentWasEmpty = isEmpty;
+    if (mounted) setState(() {}); // refresh PopScope.canPop + top-bar Draft btn
   }
 
   @override
   void dispose() {
     _commentDebounce?.cancel();
     _comment.dispose();
-    _uploadManager.photosNotifier.removeListener(_onChanged);
     if (!_isEdit) {
       _uploadManager.photosNotifier.removeListener(_onPhotosChangedForDraft);
     }
@@ -643,17 +658,24 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
               _CooldownBanner(
                 message: CooldownLabels.of(lang).message(cooldownRemaining),
               ),
-            PostButtonBar(
-              enabled: _canPost && !cooldownActive,
-              posting: _posting,
-              uploading: _uploadManager.hasActiveUploads,
-              hasFailed: _uploadManager.hasFailedUploads,
-              onPost: _post,
-              onRetryFailed: _retryAllFailed,
-              label: _isEdit ? l.updateReview : l.postReview,
-              postingLabel: _isEdit ? l.updating : l.posting,
-              uploadingLabel: l.photosUploading,
-              retryLabel: l.retryFailedUploads,
+            // Re-evaluate readiness (_canPost depends on allPhotosReady) when a
+            // photo completes — WITHOUT a parent setState. Discrete state
+            // (rating/tags/restaurant/_posting/cooldown) still flows in via the
+            // parent rebuild that wraps this bar.
+            ValueListenableBuilder<List<PhotoUploadState>>(
+              valueListenable: _uploadManager.photosNotifier,
+              builder: (context, _, _) => PostButtonBar(
+                enabled: _canPost && !cooldownActive,
+                posting: _posting,
+                uploading: _uploadManager.hasActiveUploads,
+                hasFailed: _uploadManager.hasFailedUploads,
+                onPost: _post,
+                onRetryFailed: _retryAllFailed,
+                label: _isEdit ? l.updateReview : l.postReview,
+                postingLabel: _isEdit ? l.updating : l.posting,
+                uploadingLabel: l.photosUploading,
+                retryLabel: l.retryFailedUploads,
+              ),
             ),
           ],
         ),
@@ -693,18 +715,23 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
                       errorHint: l.searchError,
                     ),
                   ),
-                PhotoSection(
-                  photos: _uploadManager.photosNotifier.value,
-                  maxPhotos: _maxPhotos,
-                  onPick: _pickPhotos,
-                  onRemove: _removePhoto,
-                  onRetry: _retryPhoto,
-                  l: PhotoSectionLabels(
-                    title: l.photos,
-                    requiredBadge: l.requiredBadge,
-                    addPhoto: l.addPhoto,
-                    cover: l.cover,
-                    hint: l.photosHint,
+                // Scope upload-progress ticks to the photo-strip subtree only:
+                // photosNotifier rebuilds just this builder, not the parent.
+                ValueListenableBuilder<List<PhotoUploadState>>(
+                  valueListenable: _uploadManager.photosNotifier,
+                  builder: (context, photos, _) => PhotoSection(
+                    photos: photos,
+                    maxPhotos: _maxPhotos,
+                    onPick: _pickPhotos,
+                    onRemove: _removePhoto,
+                    onRetry: _retryPhoto,
+                    l: PhotoSectionLabels(
+                      title: l.photos,
+                      requiredBadge: l.requiredBadge,
+                      addPhoto: l.addPhoto,
+                      cover: l.cover,
+                      hint: l.photosHint,
+                    ),
                   ),
                 ),
                 RatingSection(
