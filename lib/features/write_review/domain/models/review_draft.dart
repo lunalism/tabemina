@@ -36,6 +36,7 @@ class ReviewDraft {
     this.priceTag,
     this.comment,
     this.localPhotoPaths = const [],
+    this.anonymous = false,
     required this.savedAt,
   });
 
@@ -67,6 +68,10 @@ class ReviewDraft {
   /// URLs). Re-picked from disk on restore; missing files are skipped.
   final List<String> localPhotoPaths;
 
+  /// Whether the user toggled "post anonymously". Defaults false; old drafts
+  /// saved before this field existed decode to false.
+  final bool anonymous;
+
   /// When this draft was saved — drives the "from [relative time]" copy in
   /// the restore dialog.
   final DateTime savedAt;
@@ -95,6 +100,7 @@ class ReviewDraft {
     String? priceTag,
     String? comment,
     List<String>? localPhotoPaths,
+    bool? anonymous,
     DateTime? savedAt,
   }) {
     return ReviewDraft(
@@ -107,6 +113,7 @@ class ReviewDraft {
       priceTag: priceTag ?? this.priceTag,
       comment: comment ?? this.comment,
       localPhotoPaths: localPhotoPaths ?? this.localPhotoPaths,
+      anonymous: anonymous ?? this.anonymous,
       savedAt: savedAt ?? this.savedAt,
     );
   }
@@ -121,6 +128,7 @@ class ReviewDraft {
         if (priceTag != null) 'priceTag': priceTag,
         if (comment != null) 'comment': comment,
         'localPhotoPaths': localPhotoPaths,
+        if (anonymous) 'anonymous': anonymous,
         'savedAt': savedAt.toIso8601String(),
       };
 
@@ -138,6 +146,7 @@ class ReviewDraft {
       localPhotoPaths:
           (json['localPhotoPaths'] as List?)?.whereType<String>().toList() ??
               const [],
+      anonymous: json['anonymous'] as bool? ?? false,
       savedAt: DateTime.tryParse(json['savedAt'] as String? ?? '') ??
           DateTime.now(),
     );

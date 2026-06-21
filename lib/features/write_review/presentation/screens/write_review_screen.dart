@@ -111,6 +111,15 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
   // upload-progress ticks, so we only re-save when the count actually moves.
   int _draftPhotoCount = 0;
 
+  /// Flips true the first time the create-mode draft is auto-saved this
+  /// session. Drives the quiet top-bar "임시저장됨" indicator via its own
+  /// ValueListenableBuilder, so it never triggers a parent rebuild.
+  final ValueNotifier<bool> _draftSavedNotifier = ValueNotifier(false);
+
+  /// Set while leaving with content so the cleanup (cancelAll) can't trigger a
+  /// draft re-save that would overwrite the kept draft with empty photos.
+  bool _leaving = false;
+
   bool get _isEdit => widget.existingReview != null;
 
   @override
@@ -171,6 +180,7 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
       _uploadManager.photosNotifier.removeListener(_onPhotosChangedForDraft);
     }
     _uploadManager.dispose();
+    _draftSavedNotifier.dispose();
     super.dispose();
   }
 
@@ -211,16 +221,19 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
       priceTag: price,
       comment: _comment.text.isEmpty ? null : _comment.text,
       localPhotoPaths: localPaths,
+      anonymous: _anonymous,
       savedAt: DateTime.now(),
     );
   }
 
-  /// Persist the current form as a draft now. No-op in edit mode or when the
-  /// form is completely empty (nothing worth saving).
+  /// Persist the current form as a draft now. No-op in edit mode, while leaving
+  /// (so cleanup can't overwrite the kept draft), or when the form is empty.
   void _saveDraftNow() {
-    if (_isEdit || !_hasContent) return;
+    if (_isEdit || _leaving || !_hasContent) return;
     ref.read(draftStorageServiceProvider).saveDraft(_buildDraft());
     ref.invalidate(hasDraftProvider);
+    // Surface the quiet "saved" indicator (scoped — no parent rebuild).
+    _draftSavedNotifier.value = true;
   }
 
   void _onCommentChangedForDraft() {
@@ -237,14 +250,6 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
     if (count == _draftPhotoCount) return; // progress tick, not add/remove
     _draftPhotoCount = count;
     _saveDraftNow();
-  }
-
-  Future<void> _manualSaveDraft() async {
-    _commentDebounce?.cancel();
-    _saveDraftNow();
-    if (!mounted) return;
-    final lang = ref.read(appLocaleProvider).languageCode;
-    showTabeminaSnackbar(context, message: _Labels.of(lang).draftSaved);
   }
 
   // ---- Draft restoration ---------------------------------------------------
@@ -292,6 +297,7 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
         ..clear()
         ..addAll(draft.allTagKeys);
       _comment.text = draft.comment ?? '';
+      _anonymous = draft.anonymous;
     });
     // Re-process + re-upload any photos whose local files still exist.
     if (userId != null) {
@@ -333,31 +339,52 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
       !_posting;
 
   Future<void> _onClose() async {
-    if (!_hasContent) {
-      context.pop();
+    // Edit mode keeps the discard-confirmation: there's no auto-save/draft to
+    // fall back on, so leaving must confirm before dropping unsaved edits.
+    if (_isEdit) {
+      if (!_hasContent) {
+        context.pop();
+        return;
+      }
+      final l = _Labels.of(ref.read(appLocaleProvider).languageCode);
+      final hasPhotos = _uploadManager.count > 0;
+      final discard = await DiscardDialog.show(
+        context,
+        title: l.discardTitle,
+        // When photos are already uploaded, warn that they'll be removed.
+        body: hasPhotos ? l.discardReviewMessage : l.discardBody,
+        discardLabel: l.discardYes,
+        keepLabel: l.discardNo,
+      );
+      if (discard == true && mounted) {
+        await _uploadManager.cancelAll();
+        if (mounted) context.pop();
+      }
       return;
     }
-    final lang = ref.read(appLocaleProvider).languageCode;
-    final l = _Labels.of(lang);
-    final hasPhotos = _uploadManager.count > 0;
-    final discard = await DiscardDialog.show(
-      context,
-      title: l.discardTitle,
-      // When photos are already uploaded, warn that they'll be removed.
-      body: hasPhotos ? l.discardReviewMessage : l.discardBody,
-      discardLabel: l.discardYes,
-      keepLabel: l.discardNo,
-    );
-    if (discard == true && mounted) {
-      // Clean up any pre-uploaded photos from Storage before leaving.
-      await _uploadManager.cancelAll();
-      // Abandoning the form abandons the draft too (create mode only).
-      if (!_isEdit) {
-        await ref.read(draftStorageServiceProvider).clearDraft();
-        ref.invalidate(hasDraftProvider);
-      }
+
+    // Create mode: pure auto-save — leaving NEVER shows a discard dialog and
+    // NEVER clears the auto-saved draft.
+    if (!_hasContent) {
+      // Empty form: clear any stale draft so it can't zombie-restore next open.
+      await ref.read(draftStorageServiceProvider).clearDraft();
+      ref.invalidate(hasDraftProvider);
       if (mounted) context.pop();
+      return;
     }
+    // Has content: KEEP the auto-saved draft; just clean up orphaned uploads.
+    // The draft still references the originally-picked local paths and
+    // re-uploads on restore. _leaving guards _saveDraftNow so cancelAll's
+    // photo-clear can't overwrite the kept draft with empty photos.
+    _leaving = true;
+    _commentDebounce?.cancel();
+    await _uploadManager.cancelAll();
+    if (!mounted) return;
+    final l = _Labels.of(ref.read(appLocaleProvider).languageCode);
+    // Reassure the user their progress is kept. Queued on the app-level
+    // messenger so it survives the pop.
+    showTabeminaSnackbar(context, message: l.draftSaved);
+    context.pop();
   }
 
   Future<void> _pickPhotos() async {
@@ -646,10 +673,11 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
         resizeToAvoidBottomInset: true,
         appBar: ReviewTopBar(
           title: _isEdit ? l.editTitle : l.screenTitle,
-          draftLabel: l.draft,
           onClose: _onClose,
-          // Hidden in edit mode and when the form is empty (nothing to save).
-          onDraft: (_isEdit || !_hasContent) ? null : _manualSaveDraft,
+          // Create mode only: quiet "임시저장됨" status once the draft auto-saves
+          // this session. Null in edit mode (no draft system).
+          savedIndicator: _isEdit ? null : _draftSavedNotifier,
+          savedLabel: _isEdit ? null : l.draftSaved,
         ),
         bottomNavigationBar: Column(
           mainAxisSize: MainAxisSize.min,
@@ -767,7 +795,10 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
                 ),
                 AnonymousToggle(
                   value: _anonymous,
-                  onChanged: (v) => setState(() => _anonymous = v),
+                  onChanged: (v) {
+                    setState(() => _anonymous = v);
+                    _saveDraftNow();
+                  },
                   label: l.anonymous,
                   hint: l.anonymousHint,
                 ),
@@ -834,7 +865,6 @@ class _Labels {
   const _Labels._({
     required this.screenTitle,
     required this.editTitle,
-    required this.draft,
     required this.change,
     required this.photos,
     required this.requiredBadge,
@@ -892,7 +922,6 @@ class _Labels {
 
   final String screenTitle;
   final String editTitle;
-  final String draft;
   final String change;
   final String photos;
   final String requiredBadge;
@@ -964,7 +993,6 @@ class _Labels {
   static final _en = _Labels._(
     screenTitle: 'Write review',
     editTitle: 'Edit review',
-    draft: 'Draft',
     change: 'Change',
     photos: 'Photos',
     requiredBadge: 'Required',
@@ -1033,7 +1061,6 @@ class _Labels {
   static final _ja = _Labels._(
     screenTitle: 'レビューを書く',
     editTitle: 'レビューを編集',
-    draft: '下書き',
     change: '変更',
     photos: '写真',
     requiredBadge: '必須',
@@ -1080,7 +1107,7 @@ class _Labels {
     searchEmpty: '店名を入力して検索してください。',
     searchNoResults: 'レストランが見つかりませんでした。',
     searchError: '検索結果を読み込めませんでした。もう一度お試しください。',
-    draftSaved: '下書きを保存しました',
+    draftSaved: '下書き保存済み',
     restoreDraft: '下書きを復元しますか？',
     restoreDraftMessage: '作成中のレビューがあります。続けますか？',
     restore: '復元',
@@ -1098,7 +1125,6 @@ class _Labels {
   static final _ko = _Labels._(
     screenTitle: '리뷰 작성',
     editTitle: '리뷰 수정',
-    draft: '임시저장',
     change: '변경',
     photos: '사진',
     requiredBadge: '필수',
@@ -1145,7 +1171,7 @@ class _Labels {
     searchEmpty: '식당 이름을 입력해 검색하세요.',
     searchNoResults: '검색 결과가 없습니다.',
     searchError: '검색 결과를 불러올 수 없습니다. 다시 시도해 주세요.',
-    draftSaved: '임시저장되었습니다',
+    draftSaved: '임시저장됨',
     restoreDraft: '임시저장을 복원하시겠습니까?',
     restoreDraftMessage: '작성 중인 리뷰가 있습니다. 이어서 작성하시겠습니까?',
     restore: '복원',

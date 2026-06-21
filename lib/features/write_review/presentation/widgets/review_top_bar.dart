@@ -1,32 +1,37 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_constants.dart';
 
-/// Fixed top bar: back arrow / "Write review" / "Draft" link.
+/// Fixed top bar: back arrow / "Write review" / auto-save status.
 ///
-/// The back button delegates the discard-confirmation decision to the
-/// parent so a draft check can live in the screen state. The "Draft" link
-/// manually saves the form as a draft via [onDraft]; it's hidden entirely
-/// when [onDraft] is null (edit mode, or an empty form with nothing to
-/// save). We use the iOS-style chevron because write-review is now a push
-/// route (not a modal), and the back arrow matches the swipe-back gesture's
-/// mental model.
+/// The back button delegates the leave/discard decision to the parent. In
+/// create mode the form auto-saves, so instead of a manual save button the
+/// trailing slot shows a quiet "saved" status once a draft exists this session
+/// — driven by [savedIndicator] so it updates WITHOUT a parent rebuild. Both
+/// [savedIndicator] and [savedLabel] are null in edit mode (no draft system).
+/// We use the iOS-style chevron because write-review is a push route (not a
+/// modal), and the back arrow matches the swipe-back gesture's mental model.
 class ReviewTopBar extends StatelessWidget implements PreferredSizeWidget {
   const ReviewTopBar({
     super.key,
     required this.title,
-    required this.draftLabel,
     required this.onClose,
-    this.onDraft,
+    this.savedIndicator,
+    this.savedLabel,
   });
 
   final String title;
-  final String draftLabel;
   final VoidCallback onClose;
 
-  /// Manual "임시저장" save. Null hides the button (edit mode / empty form).
-  final VoidCallback? onDraft;
+  /// Flips true once the create-mode draft has been auto-saved this session.
+  /// Watched locally (ValueListenableBuilder) so the indicator updates without
+  /// rebuilding the parent form. Null in edit mode.
+  final ValueListenable<bool>? savedIndicator;
+
+  /// Localized "임시저장됨" label for the saved indicator. Null in edit mode.
+  final String? savedLabel;
 
   static const double _height = 48;
 
@@ -71,22 +76,40 @@ class ReviewTopBar extends StatelessWidget implements PreferredSizeWidget {
                     ),
                   ),
                 ),
-                if (onDraft != null)
-                  TextButton(
-                    onPressed: onDraft,
-                    child: Text(
-                      draftLabel,
-                      style: TextStyle(
-                        fontFamily: 'Pretendard',
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
-                        color: c.primary,
-                      ),
-                    ),
+                if (savedIndicator != null && savedLabel != null)
+                  // Scoped to its own listenable: flipping it rebuilds ONLY this
+                  // indicator, never the parent form.
+                  ValueListenableBuilder<bool>(
+                    valueListenable: savedIndicator!,
+                    builder: (context, saved, _) {
+                      if (!saved) return const SizedBox(width: 48);
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.cloud_done_outlined,
+                              size: 14,
+                              color: c.textSecondary,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              savedLabel!,
+                              style: TextStyle(
+                                fontFamily: 'Pretendard',
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                                color: c.textSecondary,
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
                   )
                 else
-                  // Keep the title centered when the button is hidden by
-                  // balancing the leading back-arrow's width.
+                  // Keep the title centered (balance the leading back-arrow).
                   const SizedBox(width: 48),
                 const SizedBox(width: AppConstants.spaceXs),
               ],
