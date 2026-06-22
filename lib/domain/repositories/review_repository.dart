@@ -42,12 +42,32 @@ class ReviewDraftData {
 /// or Storage. Swapping backends means writing a new implementation, not
 /// changing any screen code.
 abstract class ReviewRepository {
-  /// Write the review document with already-uploaded [photoUrls]. Photos are
+  /// Mint a fresh review document id WITHOUT writing anything. The caller
+  /// holds onto this stable id across submit attempts so a lost-ack retry
+  /// re-targets the SAME document instead of creating a duplicate (see
+  /// [submitReview] / [reviewExists]).
+  String newReviewId();
+
+  /// Whether a review document with [reviewId] already exists. The read rule
+  /// is public, so this is always permitted — it's the dedup probe a retry
+  /// runs before deciding whether the prior (possibly lost-ack) write
+  /// actually committed.
+  Future<bool> reviewExists(String reviewId);
+
+  /// Write the review document at [reviewId] with already-uploaded
+  /// [photoUrls]. The id is minted up-front by [newReviewId] and passed in so
+  /// a retry re-targets the same doc (idempotent create). Photos are
   /// pre-uploaded to Storage by the write-review flow, so this is just a
   /// Firestore write. [photoStoragePaths] are the Storage object paths for
   /// those URLs, persisted so the photos can be deleted later. Returns the
   /// persisted entity (with [reviewId] and timestamps).
+  ///
+  /// Always a `set()` create — never a re-`set()` of an existing doc, which
+  /// the Firestore rules route through the owner-only UPDATE path and reject.
+  /// Callers MUST gate a retry on [reviewExists] and skip the write when the
+  /// doc is already there.
   Future<ReviewEntity> submitReview(
+    String reviewId,
     ReviewDraftData draft,
     List<String> photoUrls,
     List<String> photoStoragePaths,

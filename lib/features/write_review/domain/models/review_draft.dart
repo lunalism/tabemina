@@ -37,6 +37,7 @@ class ReviewDraft {
     this.comment,
     this.localPhotoPaths = const [],
     this.anonymous = false,
+    this.reviewId,
     required this.savedAt,
   });
 
@@ -72,6 +73,13 @@ class ReviewDraft {
   /// saved before this field existed decode to false.
   final bool anonymous;
 
+  /// The stable review document id minted on the FIRST submit attempt and
+  /// persisted here so a leave-and-resubmit reuses it — letting the resubmit
+  /// dedup-probe ([ReviewRepository.reviewExists]) detect a prior lost-ack
+  /// write instead of creating a duplicate. Null until the first Post tap;
+  /// old drafts saved before this field existed decode to null.
+  final String? reviewId;
+
   /// When this draft was saved — drives the "from [relative time]" copy in
   /// the restore dialog.
   final DateTime savedAt;
@@ -101,6 +109,7 @@ class ReviewDraft {
     String? comment,
     List<String>? localPhotoPaths,
     bool? anonymous,
+    String? reviewId,
     DateTime? savedAt,
   }) {
     return ReviewDraft(
@@ -114,6 +123,7 @@ class ReviewDraft {
       comment: comment ?? this.comment,
       localPhotoPaths: localPhotoPaths ?? this.localPhotoPaths,
       anonymous: anonymous ?? this.anonymous,
+      reviewId: reviewId ?? this.reviewId,
       savedAt: savedAt ?? this.savedAt,
     );
   }
@@ -129,6 +139,7 @@ class ReviewDraft {
         if (comment != null) 'comment': comment,
         'localPhotoPaths': localPhotoPaths,
         if (anonymous) 'anonymous': anonymous,
+        if (reviewId != null) 'reviewId': reviewId,
         'savedAt': savedAt.toIso8601String(),
       };
 
@@ -147,6 +158,7 @@ class ReviewDraft {
           (json['localPhotoPaths'] as List?)?.whereType<String>().toList() ??
               const [],
       anonymous: json['anonymous'] as bool? ?? false,
+      reviewId: json['reviewId'] as String?,
       savedAt: DateTime.tryParse(json['savedAt'] as String? ?? '') ??
           DateTime.now(),
     );

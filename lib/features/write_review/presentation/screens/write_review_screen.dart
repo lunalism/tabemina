@@ -103,6 +103,17 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
   bool _posting = false;
   final ImagePicker _picker = ImagePicker();
 
+  // Idempotent submission (hotspot #3). The stable id minted on the FIRST
+  // submit attempt, kept here so an in-session retry re-targets the same doc
+  // instead of minting a fresh one (= a duplicate review). Also persisted into
+  // the draft so a leave-and-resubmit reuses it. Non-null => a prior attempt
+  // exists, so the next Post must dedup-probe before writing.
+  String? _pendingReviewId;
+  // Guards the reviewSubmitted analytics event so it fires EXACTLY ONCE per
+  // successful submission — including the get-exists (lost-ack) branch, where
+  // the first attempt threw before reaching its analytics line.
+  bool _analyticsFired = false;
+
   // Draft auto-save: discrete actions (rating/tags/photos/restaurant) save
   // immediately; comment typing is debounced 2s after the last keystroke.
   // Edit mode bypasses the whole draft system.
@@ -222,6 +233,9 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
       comment: _comment.text.isEmpty ? null : _comment.text,
       localPhotoPaths: localPaths,
       anonymous: _anonymous,
+      // Persist the stable submit id (if a submit attempt has minted one) so a
+      // leave-and-resubmit reuses it and the resubmit can dedup-probe.
+      reviewId: _pendingReviewId,
       savedAt: DateTime.now(),
     );
   }
@@ -299,6 +313,10 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
       _comment.text = draft.comment ?? '';
       _anonymous = draft.anonymous;
     });
+    // A restored reviewId means a prior submit attempt already minted an id (and
+    // may have committed before its ack was lost) — adopt it so the next Post
+    // routes through the dedup-probe instead of creating a duplicate.
+    _pendingReviewId = draft.reviewId;
     // Re-process + re-upload any photos whose local files still exist.
     if (userId != null) {
       for (final path in draft.localPhotoPaths) {
@@ -561,6 +579,26 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
           _uploadManager.removedExistingStoragePaths,
         );
         await _uploadManager.commitRemovals();
+
+        // Success-gated: only reached after the Firestore write above
+        // completed. `is_edit` disambiguates from a new post (both share the
+        // write_review screen_name). atmosphere = the chosen mood tags.
+        ref.read(analyticsEventsProvider).reviewSubmitted(
+              rating: _rating.toDouble(),
+              atmosphere: moodTags.isEmpty ? null : moodTags.join(','),
+              restaurantId: _restaurant!.placeId,
+              isEdit: true,
+              photoCount: photoUrls.length,
+            );
+        ref.invalidate(latestReviewsProvider);
+        ref.invalidate(userReviewsProvider);
+        final editedPlaceId = _restaurant!.placeId;
+        ref.invalidate(canReviewPlaceProvider(editedPlaceId));
+        ref.invalidate(reviewCooldownRemainingProvider(editedPlaceId));
+        if (!mounted) return;
+        HapticFeedback.lightImpact();
+        showTabeminaSnackbar(context, message: l.reviewUpdated);
+        context.pop();
       } else {
         final draft = ReviewDraftData(
           userId: user.uid,
@@ -578,45 +616,41 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
           priceTags: priceTags,
           language: lang,
         );
-        await repo.submitReview(draft, photoUrls, photoStoragePaths);
-        // Review is live — the in-progress draft has served its purpose.
-        await ref.read(draftStorageServiceProvider).clearDraft();
-        ref.invalidate(hasDraftProvider);
-      }
 
-      // Success-gated: only reached after the Firestore write above completed.
-      // `is_edit` disambiguates from a new post (both share the write_review
-      // screen_name). atmosphere = the chosen mood tags (no dedicated field).
-      ref.read(analyticsEventsProvider).reviewSubmitted(
-            rating: _rating.toDouble(),
-            atmosphere: moodTags.isEmpty ? null : moodTags.join(','),
-            restaurantId: _restaurant!.placeId,
-            isEdit: _isEdit,
-            photoCount: photoUrls.length,
-          );
-
-      // Refresh the home feed's latest reviews + the user's grid. The
-      // detail page's placeReviewsProvider is a stream, so it picks up
-      // the change on its own.
-      ref.invalidate(latestReviewsProvider);
-      ref.invalidate(userReviewsProvider);
-      // A fresh post starts the per-place cooldown — refresh those checks
-      // so the detail page reflects it when the user returns.
-      final postedPlaceId = _restaurant!.placeId;
-      ref.invalidate(canReviewPlaceProvider(postedPlaceId));
-      ref.invalidate(reviewCooldownRemainingProvider(postedPlaceId));
-      if (!mounted) return;
-      HapticFeedback.lightImpact();
-      if (_isEdit) {
-        showTabeminaSnackbar(context, message: l.reviewUpdated);
-        context.pop();
-      } else {
-        await SuccessOverlay.show(
-          context,
-          title: l.successTitle,
-          subtitle: l.successSubtitle,
-        );
-        if (mounted) context.pop();
+        // Idempotent submit (hotspot #3): a lost-ack retry must NOT mint a
+        // fresh id (= a duplicate review). Route on _pendingReviewId.
+        if (_pendingReviewId == null) {
+          // FIRST attempt: mint a stable id, persist it into the draft NOW (so
+          // a leave-and-resubmit reuses it), then do a direct create. Happy
+          // path stays a single write — no extra read.
+          final id = repo.newReviewId();
+          _pendingReviewId = id;
+          _saveDraftNow();
+          await repo.submitReview(id, draft, photoUrls, photoStoragePaths);
+          await _onSubmitSuccess(l, moodTags, photoUrls.length);
+        } else {
+          // RETRY / RESUBMIT (in-session retry OR a restored draft that
+          // carried a prior attempt's id): the prior write may have committed
+          // before its ack was lost. Probe FIRST — a re-set() of an existing
+          // doc hits the owner-only UPDATE rule and is rejected.
+          final alreadyCommitted = await repo.reviewExists(_pendingReviewId!);
+          if (alreadyCommitted) {
+            // Prior write landed (lost ack). Treat as success — do NOT write
+            // again. _onSubmitSuccess fires the analytics the first attempt
+            // never reached.
+            //
+            // KNOWN ACCEPTED EDGE: if the user EDITED the form during the
+            // lost-ack window then retried, this treats it as success and the
+            // originally-committed version stays live (local edits are not
+            // reconciled). Extremely narrow; accepted for now.
+            await _onSubmitSuccess(l, moodTags, photoUrls.length);
+          } else {
+            // Prior write never landed — create at the same stable id.
+            await repo.submitReview(
+                _pendingReviewId!, draft, photoUrls, photoStoragePaths);
+            await _onSubmitSuccess(l, moodTags, photoUrls.length);
+          }
+        }
       }
     } catch (_) {
       // Submit failed mid-flight (e.g. the Firestore write dropped after the
@@ -637,6 +671,58 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
     } finally {
       if (mounted) setState(() => _posting = false);
     }
+  }
+
+  /// Single success path for a NEW review — invoked from BOTH the direct-create
+  /// success AND the retry get-exists branch (where the prior write committed
+  /// but its ack was lost). Centralizing it guarantees the analytics event
+  /// fires exactly once, including the get-exists case where the first attempt
+  /// threw before reaching its analytics line.
+  Future<void> _onSubmitSuccess(
+    _Labels l,
+    List<String> moodTags,
+    int photoCount,
+  ) async {
+    // Review is live — clear the in-progress draft AND its persisted reviewId
+    // (clearDraft wipes both), and drop the in-memory id so the NEXT review
+    // mints a fresh one.
+    _pendingReviewId = null;
+    await ref.read(draftStorageServiceProvider).clearDraft();
+    ref.invalidate(hasDraftProvider);
+
+    // Fire reviewSubmitted exactly once per successful submission. atmosphere =
+    // the chosen mood tags (no dedicated field); is_edit:false — this is the
+    // new-review path only.
+    if (!_analyticsFired) {
+      _analyticsFired = true;
+      ref.read(analyticsEventsProvider).reviewSubmitted(
+            rating: _rating.toDouble(),
+            atmosphere: moodTags.isEmpty ? null : moodTags.join(','),
+            restaurantId: _restaurant!.placeId,
+            isEdit: false,
+            photoCount: photoCount,
+          );
+    }
+
+    // Refresh the home feed's latest reviews + the user's grid. The detail
+    // page's placeReviewsProvider is a stream, so it picks up the change on
+    // its own.
+    ref.invalidate(latestReviewsProvider);
+    ref.invalidate(userReviewsProvider);
+    // A fresh post starts the per-place cooldown — refresh those checks so the
+    // detail page reflects it when the user returns.
+    final postedPlaceId = _restaurant!.placeId;
+    ref.invalidate(canReviewPlaceProvider(postedPlaceId));
+    ref.invalidate(reviewCooldownRemainingProvider(postedPlaceId));
+
+    if (!mounted) return;
+    HapticFeedback.lightImpact();
+    await SuccessOverlay.show(
+      context,
+      title: l.successTitle,
+      subtitle: l.successSubtitle,
+    );
+    if (mounted) context.pop();
   }
 
   @override

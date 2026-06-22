@@ -30,13 +30,27 @@ class FirebaseReviewRepository implements ReviewRepository {
       _firestore.collection('reviews');
 
   @override
+  String newReviewId() => _reviews.doc().id;
+
+  @override
+  Future<bool> reviewExists(String reviewId) async {
+    // Read is public per the Firestore rules, so this probe is always allowed
+    // — unlike a re-set(), which would hit the owner-only UPDATE path.
+    final snap = await _reviews.doc(reviewId).get();
+    return snap.exists;
+  }
+
+  @override
   Future<ReviewEntity> submitReview(
+    String reviewId,
     ReviewDraftData draft,
     List<String> photoUrls,
     List<String> photoStoragePaths,
   ) async {
-    final docRef = _reviews.doc();
-    final reviewId = docRef.id;
+    // The id is minted by [newReviewId] and passed in so a retry re-targets
+    // the same doc. This is always a create (set on a not-yet-existing id);
+    // callers gate retries on [reviewExists] and never re-set an existing doc.
+    final docRef = _reviews.doc(reviewId);
     final now = DateTime.now();
     final data = <String, dynamic>{
       'reviewId': reviewId,
