@@ -410,14 +410,13 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
     // The draft still references the originally-picked local paths and
     // re-uploads on restore. _leaving guards _saveDraftNow so cancelAll's
     // photo-clear can't overwrite the kept draft with empty photos.
+    // The persistent app-bar "임시저장됨" indicator already confirms the save;
+    // no exit snackbar (it would otherwise survive the pop on the app-root
+    // messenger and land on the destination screen).
     _leaving = true;
     _commentDebounce?.cancel();
     await _uploadManager.cancelAll();
     if (!mounted) return;
-    final l = _Labels.of(ref.read(appLocaleProvider).languageCode);
-    // Reassure the user their progress is kept. Queued on the app-level
-    // messenger so it survives the pop.
-    showTabeminaSnackbar(context, message: l.draftSaved);
     context.pop();
   }
 
