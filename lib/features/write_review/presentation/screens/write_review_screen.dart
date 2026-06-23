@@ -348,12 +348,28 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
       _tagKeys.isNotEmpty ||
       _comment.text.isNotEmpty;
 
+  /// Whether at least one mood tag is selected. Derived by categorizing the
+  /// combined [_tagKeys] set via [kAllTags] — the same lookup the payload loop
+  /// uses — so there's no parallel set to keep in sync.
+  bool get _hasMoodTag => _tagKeys.any(
+        (k) => kAllTags
+            .any((t) => t.key == k && t.category == TagCategory.mood),
+      );
+
+  /// Number of selected price tags. The chip toggle enforces single-select, so
+  /// this is 0 or 1 in practice; the gate requires exactly 1.
+  int get _priceTagCount => _tagKeys
+      .where((k) => kAllTags
+          .any((t) => t.key == k && t.category == TagCategory.price))
+      .length;
+
   bool get _canPost =>
       _restaurant != null &&
       _uploadManager.count > 0 &&
       _uploadManager.allPhotosReady &&
       _rating > 0 &&
-      _tagKeys.isNotEmpty &&
+      _hasMoodTag &&
+      _priceTagCount == 1 &&
       !_posting;
 
   Future<void> _onClose() async {
@@ -470,6 +486,19 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
       if (_tagKeys.contains(key)) {
         _tagKeys.remove(key);
       } else {
+        // Price is single-select (the draft model holds a single priceTag):
+        // selecting a price chip replaces any other price already chosen. Mood
+        // stays multi-select.
+        final def = kAllTags.firstWhere(
+          (t) => t.key == key,
+          orElse: () => const TagDefinition(key: '', category: TagCategory.mood),
+        );
+        if (def.category == TagCategory.price) {
+          _tagKeys.removeWhere(
+            (k) => kAllTags
+                .any((t) => t.key == k && t.category == TagCategory.price),
+          );
+        }
         _tagKeys.add(key);
       }
     });
@@ -868,6 +897,8 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
                   l: TagSectionLabels(
                     title: l.tags,
                     requiredBadge: l.requiredBadge,
+                    moodHint: l.tagMoodHint,
+                    priceHint: l.tagPriceHint,
                   ),
                 ),
                 CommentSection(
@@ -964,6 +995,8 @@ class _Labels {
     required this.ratingAdjectives,
     required this.ratingOutOf,
     required this.tags,
+    required this.tagMoodHint,
+    required this.tagPriceHint,
     required this.comment,
     required this.commentPlaceholder,
     required this.anonymous,
@@ -1021,6 +1054,11 @@ class _Labels {
   final Map<int, String> ratingAdjectives;
   final String Function(int n) ratingOutOf;
   final String tags;
+
+  /// Per-group required hints for the tag section (mood needs >= 1, price
+  /// needs exactly 1). Shown only while the group is unsatisfied.
+  final String tagMoodHint;
+  final String tagPriceHint;
   final String comment;
   final String commentPlaceholder;
   final String anonymous;
@@ -1098,6 +1136,8 @@ class _Labels {
     },
     ratingOutOf: (n) => '$n out of 5',
     tags: 'Tags',
+    tagMoodHint: 'Pick at least one',
+    tagPriceHint: 'Pick one',
     comment: 'Comment',
     commentPlaceholder: 'Share your experience in one line',
     anonymous: 'Post anonymously',
@@ -1166,6 +1206,8 @@ class _Labels {
     },
     ratingOutOf: (n) => '$n/5',
     tags: 'タグ',
+    tagMoodHint: '1つ以上選択',
+    tagPriceHint: '1つ選択',
     comment: 'コメント',
     commentPlaceholder: '一言で感想を共有しよう',
     anonymous: '匿名で投稿',
@@ -1230,6 +1272,8 @@ class _Labels {
     },
     ratingOutOf: (n) => '$n/5',
     tags: '태그',
+    tagMoodHint: '최소 1개 선택',
+    tagPriceHint: '1개 선택',
     comment: '코멘트',
     commentPlaceholder: '한 줄로 경험을 공유하세요',
     anonymous: '익명으로 게시',

@@ -39,15 +39,18 @@ class SectionLabel extends StatelessWidget {
         ),
         if (badgeText != null) ...[
           const SizedBox(width: 6),
-          _Badge(text: badgeText!, required: badgeRequired),
+          SectionBadge(text: badgeText!, required: badgeRequired),
         ],
       ],
     );
   }
 }
 
-class _Badge extends StatelessWidget {
-  const _Badge({required this.text, required this.required});
+/// Small required/optional pill. Public so per-group headers (e.g. the
+/// write-review tag groups) can render the same terracotta indicator as the
+/// section headers instead of reinventing it.
+class SectionBadge extends StatelessWidget {
+  const SectionBadge({super.key, required this.text, required this.required});
 
   final String text;
   final bool required;
