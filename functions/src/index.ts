@@ -7,7 +7,8 @@
  * requests deletion and clears it on recovery (sign-in within the 30-day
  * grace window). This server side finalizes any account whose grace window
  * has elapsed: it anonymizes (but RETAINS) the user's reviews, deletes their
- * personal data, and removes the Firebase Auth user.
+ * personal data (bookmarks, blocks, profile/Storage assets, appleAuth), and
+ * removes the `users/{uid}` doc and the Firebase Auth user.
  *
  * Locked product decisions reflected here:
  *  - Reviews are ANONYMIZED and RETAINED (text, rating, photos kept; they
@@ -205,19 +206,24 @@ async function finalizeUser(
   // 2. Delete personal data: bookmarks subcollection.
   await deleteBookmarks(db, uid);
 
-  // 3. Delete personal/profile assets in Storage (review photos are RETAINED).
+  // 3. Delete the user's blocks (both directions — see deleteBlocks). Grouped
+  //    with the other Firestore-doc scrubs; a surviving block doc would
+  //    otherwise retain the deleted user's blockedUserName (PII).
+  await deleteBlocks(db, uid);
+
+  // 4. Delete personal/profile assets in Storage (review photos are RETAINED).
   await deleteProfileAssets(uid);
 
-  // 4. Revoke the user's Sign in with Apple tokens (no-op for non-Apple
+  // 5. Revoke the user's Sign in with Apple tokens (no-op for non-Apple
   //    users). Done before deleting the Auth user so a refresh-token lookup
   //    keyed by uid is still meaningful; a revoke failure is logged, never
   //    fatal.
   await revokeAppleTokenIfPresent(db, uid);
 
-  // 5. Delete the Firebase Auth user (idempotent — tolerate already-gone).
+  // 6. Delete the Firebase Auth user (idempotent — tolerate already-gone).
   await deleteAuthUser(uid);
 
-  // 6. Delete the profile doc LAST — removes the pendingDeletionAt tombstone
+  // 7. Delete the profile doc LAST — removes the pendingDeletionAt tombstone
   //    only once everything above has succeeded.
   await db.collection("users").doc(uid).delete();
 
@@ -282,6 +288,45 @@ async function deleteBookmarks(
 
     if (snap.size < PAGE_SIZE) break;
   }
+}
+
+/**
+ * Delete every block doc involving `uid` — BOTH directions: docs where the
+ * deleted user is the blocked party (`blockedUserId == uid`) AND docs where
+ * they're the blocker (`blockerUserId == uid`). Two separate paged queries,
+ * since the uid can be on either side; each hits only the automatic
+ * single-field index (no composite index needed).
+ *
+ * Full delete (not anonymize): a block has no retention value once either
+ * party is gone — unlike reviews, which are retained for rating averages — and
+ * a surviving `blockedUserId == uid` doc would otherwise keep the deleted
+ * user's `blockedUserName` (PII). Re-runnable: deleted docs stop matching, so a
+ * retry naturally finds nothing left.
+ */
+async function deleteBlocks(
+  db: FirebaseFirestore.Firestore,
+  uid: string,
+): Promise<void> {
+  const blocks = db.collection("blocks");
+  let count = 0;
+
+  for (const field of ["blockedUserId", "blockerUserId"]) {
+    for (;;) {
+      const snap = await blocks.where(field, "==", uid).limit(PAGE_SIZE).get();
+      if (snap.empty) break;
+
+      const batch = db.batch();
+      for (const doc of snap.docs) {
+        batch.delete(doc.ref);
+      }
+      await batch.commit();
+      count += snap.size;
+
+      if (snap.size < PAGE_SIZE) break;
+    }
+  }
+
+  if (count > 0) logger.info(`Deleted ${count} block(s) for ${uid}.`);
 }
 
 /**
