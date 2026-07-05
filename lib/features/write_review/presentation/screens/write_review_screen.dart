@@ -813,7 +813,7 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
                 enabled: _canPost && !cooldownActive,
                 posting: _posting,
                 uploading: _uploadManager.hasActiveUploads,
-                hasFailed: _uploadManager.hasFailedUploads,
+                hasRetryableFailed: _uploadManager.hasTransientFailed,
                 onPost: _post,
                 onRetryFailed: _retryAllFailed,
                 label: _isEdit ? l.updateReview : l.postReview,

@@ -62,8 +62,14 @@ class PhotoUploadManager {
       p.status == PhotoUploadStatus.processing ||
       p.status == PhotoUploadStatus.uploading);
 
-  bool get hasFailedUploads =>
-      _photos.any((p) => p.status == PhotoUploadStatus.failed);
+  /// A failed photo worth offering a Retry for: a transient failure (e.g. a
+  /// network hiccup) whose retry can actually succeed. Null [failureKind]
+  /// counts as transient (the default). Unprocessable failures are excluded —
+  /// re-running compress on the same bytes only re-fails, so surfacing Retry
+  /// for them is a dead button; the user must swap the photo instead.
+  bool get hasTransientFailed => _photos.any((p) =>
+      p.status == PhotoUploadStatus.failed &&
+      p.failureKind != PhotoFailureKind.unprocessable);
 
   bool get isEmpty => _photos.isEmpty;
 

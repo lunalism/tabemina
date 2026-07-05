@@ -9,15 +9,20 @@ import '../../../../core/constants/app_constants.dart';
 /// so the bar reflects upload readiness rather than per-photo progress:
 /// - normal: coral + [label]
 /// - photos uploading: gray + [uploadingLabel] + small spinner (disabled)
-/// - failed uploads: coral + [retryLabel] → [onRetryFailed]
+/// - retryable (transient) failures: coral + [retryLabel] → [onRetryFailed]
 /// - posting (Firestore write): dimmed coral + spinner + [postingLabel]
+///
+/// Note: only *retryable* failures surface Retry ([hasRetryableFailed]).
+/// Unprocessable photos can never be re-encoded, so they don't offer Retry —
+/// the bar falls through to a disabled Post and the photo-strip hint tells the
+/// user to pick a different photo.
 class PostButtonBar extends StatelessWidget {
   const PostButtonBar({
     super.key,
     required this.enabled,
     required this.posting,
     required this.uploading,
-    required this.hasFailed,
+    required this.hasRetryableFailed,
     required this.onPost,
     required this.onRetryFailed,
     required this.label,
@@ -29,7 +34,7 @@ class PostButtonBar extends StatelessWidget {
   final bool enabled;
   final bool posting;
   final bool uploading;
-  final bool hasFailed;
+  final bool hasRetryableFailed;
   final VoidCallback onPost;
   final VoidCallback onRetryFailed;
   final String label;
@@ -62,8 +67,9 @@ class PostButtonBar extends StatelessWidget {
 
   Widget _button(AppColors c) {
     // Retry takes priority over the disabled "uploading" look so the user
-    // can act on failures without waiting.
-    if (hasFailed && !posting) {
+    // can act on failures without waiting. Only *retryable* (transient)
+    // failures qualify — unprocessable ones fall through to disabled Post.
+    if (hasRetryableFailed && !posting) {
       return _Tappable(
         onTap: onRetryFailed,
         color: c.primary,
