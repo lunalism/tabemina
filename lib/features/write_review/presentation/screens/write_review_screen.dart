@@ -94,8 +94,9 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
   ReviewRestaurant? _restaurant;
   // Instagram-style pre-upload: photos are processed + uploaded the moment
   // they're picked. The manager owns their lifecycle; the screen rebuilds
-  // on its notifier.
-  final PhotoUploadManager _uploadManager = PhotoUploadManager();
+  // on its notifier. Constructed in initState so it can be handed the
+  // analytics facade (for compress-fallback telemetry).
+  late final PhotoUploadManager _uploadManager;
   int _rating = 0;
   final Set<String> _tagKeys = {};
   bool _anonymous = false;
@@ -136,6 +137,8 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
   @override
   void initState() {
     super.initState();
+    _uploadManager =
+        PhotoUploadManager(analytics: ref.read(analyticsEventsProvider));
     final review = widget.existingReview;
     if (review != null) {
       _restaurant = ReviewRestaurant(
@@ -873,6 +876,7 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
                       addPhoto: l.addPhoto,
                       cover: l.cover,
                       hint: l.photosHint,
+                      unprocessableHint: l.photoUnprocessableHint,
                     ),
                   ),
                 ),
@@ -988,6 +992,7 @@ class _Labels {
     required this.addPhoto,
     required this.cover,
     required this.photosHint,
+    required this.photoUnprocessableHint,
     required this.takePhoto,
     required this.chooseFromGallery,
     required this.rating,
@@ -1047,6 +1052,7 @@ class _Labels {
   final String addPhoto;
   final String cover;
   final String photosHint;
+  final String photoUnprocessableHint;
   final String takePhoto;
   final String chooseFromGallery;
   final String rating;
@@ -1123,6 +1129,8 @@ class _Labels {
     addPhoto: 'Add photo',
     cover: 'Cover',
     photosHint: 'Min 1, max 5 photos. First photo becomes the cover.',
+    photoUnprocessableHint:
+        "This photo can't be used — please choose a different one.",
     takePhoto: 'Take photo',
     chooseFromGallery: 'Choose from gallery',
     rating: 'Rating',
@@ -1193,6 +1201,7 @@ class _Labels {
     addPhoto: '写真を追加',
     cover: 'カバー',
     photosHint: '最低1枚、最大5枚。1枚目がカバー写真になります。',
+    photoUnprocessableHint: 'この写真は使用できません — 別の写真を選んでください。',
     takePhoto: '写真を撮る',
     chooseFromGallery: 'ギャラリーから選ぶ',
     rating: '評価',
@@ -1259,6 +1268,7 @@ class _Labels {
     addPhoto: '사진 추가',
     cover: '커버',
     photosHint: '최소 1장, 최대 5장. 첫 사진이 커버가 됩니다.',
+    photoUnprocessableHint: '이 사진은 사용할 수 없어요 — 다른 사진을 선택하세요',
     takePhoto: '사진 촬영',
     chooseFromGallery: '갤러리에서 선택',
     rating: '평점',

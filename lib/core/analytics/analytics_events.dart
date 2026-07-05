@@ -81,6 +81,21 @@ class AnalyticsEvents {
     });
   }
 
+  /// A photo's first compress attempt returned null and a retry re-encode is
+  /// about to run. Measures how often the native codec hiccups (dominant cause:
+  /// iOS HEIC decode on ordinary photos) — invisible in production otherwise.
+  /// No parameters: IDFA-free and carries no per-photo data.
+  Future<void> photoCompressRetry() {
+    return _analytics.logEvent('photo_compress_retry');
+  }
+
+  /// A photo failed to compress even after the retry — it can never be stripped,
+  /// so the upload is blocked (the original with EXIF is never sent). Tracks the
+  /// genuinely-unprocessable rate. No parameters (IDFA-free).
+  Future<void> photoCompressUnprocessable() {
+    return _analytics.logEvent('photo_compress_unprocessable');
+  }
+
   /// A bookmark was added (toggle-on persisted). [origin] is the surface where
   /// the action happened; optional.
   Future<void> bookmarkAdded({

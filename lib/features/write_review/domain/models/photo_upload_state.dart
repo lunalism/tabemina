@@ -16,6 +16,18 @@ enum PhotoUploadStatus {
   failed,
 }
 
+/// Why a [PhotoUploadStatus.failed] photo failed — drives whether the UI offers
+/// retry or steers the user to a different photo.
+enum PhotoFailureKind {
+  /// A recoverable failure (e.g. a network hiccup during upload). Retrying the
+  /// same file can succeed — the default when the reason is unknown.
+  transient,
+
+  /// The image can never be re-encoded/stripped (compress failed after a
+  /// retry). Retrying is pointless; the user must pick a different photo.
+  unprocessable,
+}
+
 /// One photo's lifecycle in the Instagram-style pre-upload flow: each photo
 /// is processed and uploaded the moment it's picked, so posting the review
 /// is just a Firestore write.
@@ -30,6 +42,7 @@ class PhotoUploadState {
     this.storagePath,
     this.uploadProgress = 0.0,
     this.error,
+    this.failureKind,
     this.isExisting = false,
   });
 
@@ -57,6 +70,12 @@ class PhotoUploadState {
 
   final String? error;
 
+  /// Set when [status] is [PhotoUploadStatus.failed] — classifies the failure
+  /// so the UI can offer retry (transient) vs. "use a different photo"
+  /// (unprocessable). Null when not failed, or when the reason is unknown
+  /// (treated as transient).
+  final PhotoFailureKind? failureKind;
+
   /// True when this entry came from an existing review being edited — it's
   /// already on the server, shows as completed immediately, and is never
   /// re-uploaded.
@@ -69,6 +88,7 @@ class PhotoUploadState {
     PhotoUploadStatus? status,
     double? uploadProgress,
     String? error,
+    PhotoFailureKind? failureKind,
   }) {
     return PhotoUploadState(
       localId: localId,
@@ -80,6 +100,7 @@ class PhotoUploadState {
       status: status ?? this.status,
       uploadProgress: uploadProgress ?? this.uploadProgress,
       error: error ?? this.error,
+      failureKind: failureKind ?? this.failureKind,
     );
   }
 }

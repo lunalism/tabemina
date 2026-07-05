@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart';
 
+import '../../../../core/analytics/analytics_events.dart';
 import '../../../../core/utils/image_utils.dart';
 import '../../domain/models/photo_upload_state.dart';
 
@@ -14,10 +15,18 @@ import '../../domain/models/photo_upload_state.dart';
 /// One instance lives per write-review session (created in the screen's
 /// State, disposed with it). UI listens to [photosNotifier].
 class PhotoUploadManager {
-  PhotoUploadManager({FirebaseStorage? storage})
-      : _storage = storage ?? FirebaseStorage.instance;
+  // Public `analytics:` param name over a private field; a `this._analytics`
+  // initializing formal would leak the underscore to call sites.
+  PhotoUploadManager({FirebaseStorage? storage, AnalyticsEvents? analytics})
+      : _storage = storage ?? FirebaseStorage.instance,
+        // ignore: prefer_initializing_formals
+        _analytics = analytics;
 
   final FirebaseStorage _storage;
+
+  /// Optional telemetry for the compress-fallback path (retry / unprocessable).
+  /// Null in tests; wired from the screen in production.
+  final AnalyticsEvents? _analytics;
   final List<PhotoUploadState> _photos = [];
 
   /// URLs of existing photos the user removed during an edit — deleted from
@@ -121,7 +130,10 @@ class PhotoUploadManager {
     _notify();
 
     try {
-      final processed = await processImageForUpload(file);
+      final processed = await processImageForUpload(
+        file,
+        onCompressRetry: () => _analytics?.photoCompressRetry(),
+      );
       _update(localId, (s) => s.copyWith(
             processedFile: processed,
             status: PhotoUploadStatus.uploading,
@@ -156,9 +168,17 @@ class PhotoUploadManager {
         processed.delete().catchError((_) => processed);
       }
     } catch (e) {
+      // An unprocessable image can NEVER be re-encoded/stripped — retry is
+      // pointless, so classify it distinctly and steer the user to a different
+      // photo. Everything else (e.g. upload network errors) is transient.
+      final unprocessable = e is ImageUnprocessableException;
+      if (unprocessable) _analytics?.photoCompressUnprocessable();
       _update(localId, (s) => s.copyWith(
             status: PhotoUploadStatus.failed,
             error: e.toString(),
+            failureKind: unprocessable
+                ? PhotoFailureKind.unprocessable
+                : PhotoFailureKind.transient,
           ));
     }
   }

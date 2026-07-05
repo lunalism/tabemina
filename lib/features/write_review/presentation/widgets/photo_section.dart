@@ -34,6 +34,11 @@ class PhotoSection extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = AppColors.of(context);
     final canAddMore = photos.length < maxPhotos;
+    // When any photo can never be processed, swap the normal hint for a warm,
+    // full-width (wrapping, size-safe) line pointing the user to remove it and
+    // pick a different one — the escape from the otherwise-dead retry loop.
+    final hasUnprocessable =
+        photos.any((p) => p.failureKind == PhotoFailureKind.unprocessable);
 
     return Padding(
       padding: const EdgeInsets.only(top: AppConstants.spaceLg),
@@ -88,11 +93,11 @@ class PhotoSection extends StatelessWidget {
               horizontal: AppConstants.spaceLg,
             ),
             child: Text(
-              l.hint,
+              hasUnprocessable ? l.unprocessableHint : l.hint,
               style: TextStyle(
                 fontFamily: 'Pretendard',
                 fontSize: 11,
-                color: c.textSecondary,
+                color: hasUnprocessable ? c.warningText : c.textSecondary,
               ),
             ),
           ),
@@ -109,6 +114,7 @@ class PhotoSectionLabels {
     required this.addPhoto,
     required this.cover,
     required this.hint,
+    required this.unprocessableHint,
   });
 
   final String title;
@@ -116,6 +122,10 @@ class PhotoSectionLabels {
   final String addPhoto;
   final String cover;
   final String hint;
+
+  /// Shown in place of [hint] when a picked photo can never be processed —
+  /// tells the user to remove it and choose a different one.
+  final String unprocessableHint;
 }
 
 class _PhotoSlot extends StatelessWidget {
@@ -268,12 +278,29 @@ class _PhotoSlot extends StatelessWidget {
           ),
         );
       case PhotoUploadStatus.failed:
+        final c = AppColors.of(context);
+        final unprocessable =
+            photo.failureKind == PhotoFailureKind.unprocessable;
+        // Warm terracotta wash (dark-mode-correct, same strong accent in both
+        // modes with a cream icon) — replaces the old harsh brick-red literal.
+        final wash = c.snackbarBlockedFill.withValues(alpha: 0.62);
+        final fg = c.snackbarBlockedIcon;
+        if (unprocessable) {
+          // Never re-encodable → retry is pointless: no tap handler, and a
+          // "can't use" glyph instead of the refresh icon. The X remove button
+          // (rendered by the parent) is the way out; the hint line explains.
+          return Container(
+            color: wash,
+            alignment: Alignment.center,
+            child: Icon(Icons.broken_image_rounded, size: 24, color: fg),
+          );
+        }
         return Material(
-          color: const Color(0x99C0392B),
+          color: wash,
           child: InkWell(
             onTap: onRetry,
-            child: const Center(
-              child: Icon(Icons.refresh_rounded, size: 24, color: Colors.white),
+            child: Center(
+              child: Icon(Icons.refresh_rounded, size: 24, color: fg),
             ),
           ),
         );
