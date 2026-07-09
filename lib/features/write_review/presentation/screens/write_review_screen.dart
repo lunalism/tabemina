@@ -276,6 +276,12 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
     final service = ref.read(draftStorageServiceProvider);
     final draft = await service.loadDraft();
     if (draft == null || draft.isEmpty || !mounted) return;
+    // Only offer restore when the saved draft belongs to the restaurant currently
+    // open. If no restaurant is set yet (tab entry), allow restore (fall back to
+    // prior behavior). A different restaurant's draft is left untouched — no prompt,
+    // no clear.
+    final current = _restaurant?.placeId;
+    if (current != null && draft.placeId != current) return;
     final lang = ref.read(appLocaleProvider).languageCode;
     final l = _Labels.of(lang);
     final choice = await RestoreDraftDialog.show(
@@ -403,9 +409,20 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
     // Create mode: pure auto-save — leaving NEVER shows a discard dialog and
     // NEVER clears the auto-saved draft.
     if (!_hasContent) {
-      // Empty form: clear any stale draft so it can't zombie-restore next open.
-      await ref.read(draftStorageServiceProvider).clearDraft();
-      ref.invalidate(hasDraftProvider);
+      // Empty form: clear any stale draft so it can't zombie-restore next open —
+      // but only if that draft belongs to THIS restaurant (or has no placeId).
+      // Never wipe a different restaurant's saved draft when merely abandoning this
+      // one.
+      final service = ref.read(draftStorageServiceProvider);
+      final existing = await service.loadDraft();
+      final current = _restaurant?.placeId;
+      final belongsHere = existing == null ||
+          existing.placeId == null ||
+          existing.placeId == current;
+      if (belongsHere) {
+        await service.clearDraft();
+        ref.invalidate(hasDraftProvider);
+      }
       if (mounted) context.pop();
       return;
     }
