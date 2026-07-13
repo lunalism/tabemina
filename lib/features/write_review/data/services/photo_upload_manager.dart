@@ -204,13 +204,24 @@ class PhotoUploadManager {
         _removedExistingStoragePaths.add(photo.storagePath!);
       }
     } else {
+      // Update the list FIRST so the thumbnail disappears immediately — this is
+      // a user-interactive path (X button), so we never block the UI on the
+      // network delete below.
+      _photos.removeAt(index);
+      _notify();
       if (photo.storagePath != null) {
-        _storage.ref(photo.storagePath!).delete().catchError((_) {});
+        try {
+          await _storage.ref(photo.storagePath!).delete();
+        } catch (e) {
+          debugPrint(
+              'removePhoto: failed to delete Storage photo at ${photo.storagePath}: $e');
+        }
       }
       final processed = photo.processedFile;
       if (processed != null && processed.path != photo.originalFile.path) {
         processed.delete().catchError((_) => processed);
       }
+      return;
     }
 
     _photos.removeAt(index);
@@ -250,16 +261,30 @@ class PhotoUploadManager {
   /// Abandon: delete every uploaded (non-existing) photo from Storage and
   /// clear local temp files. Existing photos are left untouched.
   Future<void> cancelAll() async {
+    // Collect each Storage delete so we can await them together — they must
+    // resolve BEFORE this returns, since the caller pops the screen right
+    // after and would otherwise drop the in-flight deletes (orphan blobs).
+    final storageDeletes = <Future<void>>[];
     for (final photo in _photos) {
       if (photo.isExisting) continue;
       if (photo.storagePath != null) {
-        _storage.ref(photo.storagePath!).delete().catchError((_) {});
+        storageDeletes.add(() async {
+          try {
+            await _storage.ref(photo.storagePath!).delete();
+          } catch (e) {
+            // One failure must not abort the others — log and move on.
+            debugPrint(
+                'cancelAll: failed to delete Storage photo at ${photo.storagePath}: $e');
+          }
+        }());
       }
       final processed = photo.processedFile;
       if (processed != null && processed.path != photo.originalFile.path) {
+        // Local temp file — not orphan-relevant, so don't block on it.
         processed.delete().catchError((_) => processed);
       }
     }
+    await Future.wait(storageDeletes);
     _photos.clear();
     _notify();
   }
