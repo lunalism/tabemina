@@ -106,6 +106,10 @@ void showTabeminaBlockedSnackbar(
           bottom: AppConstants.spaceSm,
         ),
         duration: duration,
+        // Honor the finite [duration] even with a retry action present: Flutter
+        // otherwise derives persist = (action != null) = true, whose timeout
+        // fires but doesn't hide the bar — leaving it stuck on screen.
+        persist: false,
         dismissDirection: DismissDirection.horizontal,
         content: Row(
           children: [
