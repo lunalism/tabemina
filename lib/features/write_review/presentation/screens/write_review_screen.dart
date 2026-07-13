@@ -764,6 +764,12 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
     ref.invalidate(reviewCooldownRemainingProvider(postedPlaceId));
 
     if (!mounted) return;
+    // Dismiss any lingering failure/offline snackbar (shown on the root
+    // ScaffoldMessenger via showTabeminaBlockedSnackbar) so it doesn't bleed
+    // onto the restaurant-detail screen after we pop. The edit path clears
+    // implicitly via showTabeminaSnackbar; this overlay-based path must do it
+    // explicitly. Covers all three success entry points into this method.
+    ScaffoldMessenger.of(context).clearSnackBars();
     HapticFeedback.lightImpact();
     await SuccessOverlay.show(
       context,
