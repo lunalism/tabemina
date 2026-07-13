@@ -1,7 +1,7 @@
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
-    match /reviews/{reviewId}/{fileName} {
+    match /reviews/{uid}/{fileName} {
       allow read: if true;
 
       // CHANGED (S-1 fix): uploads capped at 10MB and restricted to images,
@@ -13,11 +13,13 @@ service firebase.storage {
       // No in-place overwrites (review photo edits upload new filenames).
       allow update: if false;
 
-      // CHANGED (S-1 fix): only the review's author may delete its photos.
-      // deleteReview removes photos BEFORE the Firestore doc, so the doc is
-      // still present here for the ownership lookup.
+      // CHANGED (S-1 fix): only the owner of the path may delete their photos.
+      // Path-ownership (uid segment == caller) instead of a firestore.get on a
+      // review doc: photos are uploaded BEFORE any review doc exists (pre-submit),
+      // and the object path is keyed by uid, not reviewId, so a doc lookup would
+      // target a nonexistent reviews/{uid} and wrongly deny every delete.
       allow delete: if request.auth != null
-        && firestore.get(/databases/(default)/documents/reviews/$(reviewId)).data.userId == request.auth.uid;
+        && request.auth.uid == uid;
     }
   }
 }
