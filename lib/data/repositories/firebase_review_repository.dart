@@ -222,6 +222,14 @@ class FirebaseReviewRepository implements ReviewRepository {
         .orderBy('createdAt', descending: true)
         .limit(limit * 2)
         .get();
+    // The default serverAndCache get() doesn't throw when offline — it falls
+    // back to the cache, which on a fresh install is empty. Left alone that
+    // renders as a fake "no reviews yet"; surface it as a failure instead so
+    // the feed shows its error + retry state. A warm cache (docs present)
+    // still serves stale data offline, which is desired.
+    if (snap.metadata.isFromCache && snap.docs.isEmpty) {
+      throw const ReviewsUnavailableException();
+    }
     return _visible(snap.docs).take(limit).toList();
   }
 

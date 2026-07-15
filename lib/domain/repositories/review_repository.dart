@@ -36,6 +36,19 @@ class ReviewDraftData {
   final String language;
 }
 
+/// Reviews could not be fetched from the backend and no cached copy exists
+/// (e.g. offline on a fresh install). Callers surface this as a retriable
+/// error state rather than an empty list — without it, an offline cold start
+/// renders as a fake "no reviews yet".
+class ReviewsUnavailableException implements Exception {
+  const ReviewsUnavailableException();
+
+  @override
+  String toString() =>
+      'ReviewsUnavailableException: network is unreachable and no cached '
+      'reviews exist';
+}
+
 /// Abstract review-storage contract.
 ///
 /// The presentation layer talks to this interface only — never to Firestore
@@ -100,6 +113,9 @@ abstract class ReviewRepository {
   Future<bool> canReviewPlace(String userId, String placeId);
 
   /// One-shot read of the newest reviews across all places (Home feed).
+  /// Throws [ReviewsUnavailableException] when the backend is unreachable and
+  /// no cached copy exists — an empty result then means "no reviews", never
+  /// "couldn't load".
   Future<List<ReviewEntity>> getLatestReviews({int limit = 10});
 
   Stream<List<ReviewEntity>> watchReviewsForPlace(String placeId);
