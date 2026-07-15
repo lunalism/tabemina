@@ -291,24 +291,45 @@ class _RealReviewCard extends ConsumerWidget {
   }
 }
 
-class _Avatar extends StatelessWidget {
+class _Avatar extends StatefulWidget {
   const _Avatar({required this.photoUrl, required this.fallback});
 
   final String? photoUrl;
   final String fallback;
 
   @override
+  State<_Avatar> createState() => _AvatarState();
+}
+
+class _AvatarState extends State<_Avatar> {
+  /// Set when the network image fails to load (e.g. a stale googleusercontent
+  /// URL 404s) so the initials fallback replaces the blank circle.
+  bool _failed = false;
+
+  @override
+  void didUpdateWidget(_Avatar oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.photoUrl != oldWidget.photoUrl) _failed = false;
+  }
+
+  @override
   Widget build(BuildContext context) {
     final c = AppColors.of(context);
+    final url = widget.photoUrl;
+    final showImage = !_failed && url != null && url.isNotEmpty;
     return CircleAvatar(
       radius: 14,
       backgroundColor: c.bgSkeleton,
-      backgroundImage: (photoUrl != null && photoUrl!.isNotEmpty)
-          ? NetworkImage(photoUrl!)
+      backgroundImage: showImage ? NetworkImage(url) : null,
+      onBackgroundImageError: showImage
+          ? (_, _) {
+              if (mounted) setState(() => _failed = true);
+            }
           : null,
-      child: (photoUrl == null || photoUrl!.isEmpty)
-          ? Text(
-              fallback,
+      child: showImage
+          ? null
+          : Text(
+              widget.fallback,
               style: TextStyle(
                 fontFamily: 'Pretendard',
                 fontSize: 11,
@@ -316,8 +337,7 @@ class _Avatar extends StatelessWidget {
                 color: c.textPrimary,
                 height: 1.0,
               ),
-            )
-          : null,
+            ),
     );
   }
 }
