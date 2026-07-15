@@ -32,7 +32,9 @@ class LatestReviewsSection extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _Header(title: labels.heading, seeAll: labels.seeAll),
+          // "See all" entry point removed for v1; all-reviews screen deferred
+          // to v1.1 (pagination + isHidden server filter prerequisite).
+          _Header(title: labels.heading),
           const SizedBox(height: AppConstants.spaceSm),
           Padding(
             padding: const EdgeInsets.symmetric(
@@ -72,10 +74,9 @@ class LatestReviewsSection extends ConsumerWidget {
 }
 
 class _Header extends StatelessWidget {
-  const _Header({required this.title, required this.seeAll});
+  const _Header({required this.title});
 
   final String title;
-  final String seeAll;
 
   @override
   Widget build(BuildContext context) {
@@ -93,26 +94,6 @@ class _Header extends StatelessWidget {
               fontSize: 16,
               fontWeight: FontWeight.w500,
               color: c.textPrimary,
-            ),
-          ),
-          const Spacer(),
-          InkWell(
-            onTap: () {},
-            borderRadius: BorderRadius.circular(AppConstants.radiusSm),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: AppConstants.spaceXs,
-                vertical: 2,
-              ),
-              child: Text(
-                seeAll,
-                style: TextStyle(
-                  fontFamily: 'Pretendard',
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500,
-                  color: c.primary,
-                ),
-              ),
             ),
           ),
         ],
@@ -487,13 +468,11 @@ class _EmptyState extends StatelessWidget {
 class _Labels {
   const _Labels._({
     required this.heading,
-    required this.seeAll,
     required this.emptyMessage,
     required this.errorMessage,
   });
 
   final String heading;
-  final String seeAll;
   final String emptyMessage;
   final String errorMessage;
 
@@ -502,14 +481,12 @@ class _Labels {
       case 'ja':
         return const _Labels._(
           heading: '最新のレビュー',
-          seeAll: 'すべて表示 >',
           emptyMessage: 'まだレビューはありません。最初のレビューを書いてみよう!',
           errorMessage: 'レビューを読み込めませんでした。',
         );
       case 'ko':
         return const _Labels._(
           heading: '최신 리뷰',
-          seeAll: '모두 보기 >',
           emptyMessage: '아직 리뷰가 없습니다. 첫 번째 리뷰를 작성해보세요!',
           errorMessage: '리뷰를 불러올 수 없습니다.',
         );
@@ -517,7 +494,6 @@ class _Labels {
       default:
         return const _Labels._(
           heading: 'Latest reviews',
-          seeAll: 'See all >',
           emptyMessage: 'No reviews yet. Be the first to review!',
           errorMessage: "Couldn't load reviews.",
         );
