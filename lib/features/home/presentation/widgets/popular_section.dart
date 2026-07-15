@@ -28,7 +28,9 @@ class PopularSection extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _Header(title: labels.title, seeAll: labels.seeAll),
+        // "See all" entry point removed for v1; all-restaurants screen
+        // deferred to v1.1.
+        _Header(title: labels.title),
         const SizedBox(height: AppConstants.spaceSm),
         SizedBox(
           height: _carouselHeight,
@@ -50,10 +52,9 @@ class PopularSection extends ConsumerWidget {
 }
 
 class _Header extends StatelessWidget {
-  const _Header({required this.title, required this.seeAll});
+  const _Header({required this.title});
 
   final String title;
-  final String seeAll;
 
   @override
   Widget build(BuildContext context) {
@@ -81,26 +82,6 @@ class _Header extends StatelessWidget {
               fontSize: 16,
               fontWeight: FontWeight.w500,
               color: c.textPrimary,
-            ),
-          ),
-          const Spacer(),
-          InkWell(
-            onTap: () {},
-            borderRadius: BorderRadius.circular(AppConstants.radiusSm),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: AppConstants.spaceXs,
-                vertical: 2,
-              ),
-              child: Text(
-                seeAll,
-                style: TextStyle(
-                  fontFamily: 'Pretendard',
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500,
-                  color: c.primary,
-                ),
-              ),
             ),
           ),
         ],
@@ -229,19 +210,16 @@ class _ErrorState extends StatelessWidget {
 }
 
 /// Localized section chrome for "Popular near you" (KO / JA / EN), following
-/// the project's manual `XxxLabels.of(lang)` convention. The "See all" value
-/// is kept identical to the Latest-reviews / Cafes sections so the affordance
-/// reads the same everywhere; the Retry CTA reuses [AppStateLabels].
+/// the project's manual `XxxLabels.of(lang)` convention. The Retry CTA reuses
+/// [AppStateLabels].
 class _Labels {
   const _Labels._({
     required this.title,
-    required this.seeAll,
     required this.emptyMessage,
     required this.errorMessage,
   });
 
   final String title;
-  final String seeAll;
   final String emptyMessage;
   final String errorMessage;
 
@@ -250,14 +228,12 @@ class _Labels {
       case 'ja':
         return const _Labels._(
           title: '近くの人気店',
-          seeAll: 'すべて表示 >',
           emptyMessage: '近くにお店が見つかりません',
           errorMessage: 'お店を読み込めませんでした',
         );
       case 'ko':
         return const _Labels._(
           title: '근처 인기 맛집',
-          seeAll: '모두 보기 >',
           emptyMessage: '근처에 맛집이 없어요',
           errorMessage: '맛집을 불러올 수 없어요',
         );
@@ -265,7 +241,6 @@ class _Labels {
       default:
         return const _Labels._(
           title: 'Popular near you',
-          seeAll: 'See all >',
           emptyMessage: 'No restaurants found nearby',
           errorMessage: "Couldn't load restaurants",
         );
