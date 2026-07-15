@@ -40,7 +40,16 @@ class LatestReviewsSection extends ConsumerWidget {
             ),
             child: async.when(
               loading: () => const _LoadingList(),
-              error: (_, _) => _EmptyState(message: labels.errorMessage),
+              error: (error, stackTrace) {
+                debugPrint(
+                  'Latest reviews failed to load: $error\n$stackTrace',
+                );
+                return _EmptyState(
+                  message: labels.errorMessage,
+                  retryLabel: AppStateLabels.of(lang).errorNetworkCta,
+                  onRetry: () => ref.invalidate(latestReviewsProvider),
+                );
+              },
               data: (reviews) {
                 if (reviews.isEmpty) {
                   return _EmptyState(message: labels.emptyMessage);
@@ -399,10 +408,16 @@ class _LoadingList extends StatelessWidget {
   }
 }
 
+/// Passive card for the no-reviews and error cases. When [onRetry] is
+/// provided (error only), a Retry pill renders below the message — styled to
+/// match the cafe section's error state so the two Home-feed retries read
+/// identically. The plain empty state stays a single message row.
 class _EmptyState extends StatelessWidget {
-  const _EmptyState({required this.message});
+  const _EmptyState({required this.message, this.retryLabel, this.onRetry});
 
   final String message;
+  final String? retryLabel;
+  final VoidCallback? onRetry;
 
   @override
   Widget build(BuildContext context) {
@@ -417,25 +432,52 @@ class _EmptyState extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: c.borderPrimary, width: 0.5),
       ),
-      child: Row(
+      child: Column(
         children: [
-          Icon(
-            Icons.chat_bubble_outline_rounded,
-            size: 20,
-            color: c.textTertiary,
+          Row(
+            children: [
+              Icon(
+                Icons.chat_bubble_outline_rounded,
+                size: 20,
+                color: c.textTertiary,
+              ),
+              const SizedBox(width: AppConstants.spaceMd),
+              Expanded(
+                child: Text(
+                  message,
+                  style: TextStyle(
+                    fontFamily: 'Pretendard',
+                    fontSize: 13,
+                    color: c.textSecondary,
+                    height: 1.4,
+                  ),
+                ),
+              ),
+            ],
           ),
-          const SizedBox(width: AppConstants.spaceMd),
-          Expanded(
-            child: Text(
-              message,
-              style: TextStyle(
-                fontFamily: 'Pretendard',
-                fontSize: 13,
-                color: c.textSecondary,
-                height: 1.4,
+          if (onRetry != null) ...[
+            const SizedBox(height: AppConstants.spaceSm),
+            OutlinedButton(
+              onPressed: onRetry,
+              style: OutlinedButton.styleFrom(
+                foregroundColor: c.primary,
+                side: BorderSide(color: c.primary),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(AppConstants.radiusFull),
+                ),
+              ),
+              child: Text(
+                retryLabel ?? '',
+                style: const TextStyle(
+                  fontFamily: 'Pretendard',
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                ),
               ),
             ),
-          ),
+          ],
         ],
       ),
     );
