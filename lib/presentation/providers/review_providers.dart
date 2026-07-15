@@ -1,6 +1,8 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/providers/app_locale_provider.dart';
+import '../../core/providers/connectivity_providers.dart';
+import '../../core/services/connectivity_service.dart';
 import '../../data/repositories/firebase_review_repository.dart';
 import '../../domain/entities/review_entity.dart';
 import '../../domain/repositories/review_repository.dart';
@@ -60,7 +62,18 @@ final userReviewsProvider = FutureProvider<List<ReviewEntity>>((ref) async {
 });
 
 /// 10 newest reviews across all places — Home feed's "Latest reviews".
+///
+/// Self-heals after an offline cold start: an offline launch resolves to the
+/// error state (see ReviewsUnavailableException), and without this listener
+/// it would sit there until a manual retry / pull-to-refresh. Guarded to the
+/// offline → online TRANSITION only, so emissions while already online (e.g.
+/// wifi → cellular) don't refetch.
 final latestReviewsProvider = FutureProvider<List<ReviewEntity>>((ref) {
+  ref.listen(connectivityStatusProvider, (prev, next) {
+    final wasOffline = prev?.asData?.value == NetworkStatus.offline;
+    final nowOnline = next.asData?.value == NetworkStatus.online;
+    if (wasOffline && nowOnline) ref.invalidateSelf();
+  });
   return ref.watch(reviewRepositoryProvider).getLatestReviews(limit: 10);
 });
 
