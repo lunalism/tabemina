@@ -12,10 +12,11 @@ import '../config/dev_config.dart';
 class LocationService {
   const LocationService();
 
-  /// Returns the device's current position, or `null` if location services are
-  /// disabled or the user declined permission. Never throws for the
-  /// expected failure modes — callers can treat a `null` result as "no fix,
-  /// leave the camera alone."
+  /// Returns the device's current position, or `null` on any failure to get
+  /// a fix: permission denied / denied forever, location services disabled,
+  /// fix acquisition timed out (10s), or any other acquisition error. Never
+  /// throws — callers (including `searchLocationUnavailableProvider`) rely on
+  /// `null` meaning "no fix, leave the camera alone."
   ///
   /// When [DevConfig.useDevLocation] is `true` this short-circuits to the
   /// configured dev coordinates without prompting for permission or hitting
@@ -36,11 +37,19 @@ class LocationService {
       return null;
     }
 
-    return Geolocator.getCurrentPosition(
-      locationSettings: const LocationSettings(
-        accuracy: LocationAccuracy.high,
-      ),
-    );
+    try {
+      return await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          timeLimit: Duration(seconds: 10),
+        ),
+      );
+    } catch (_) {
+      // TimeoutException, LocationServiceDisabledException (services toggled
+      // off after the check above), or any other geolocator failure — all
+      // collapse to the null "no fix" contract.
+      return null;
+    }
   }
 
   Position _devPosition() {
