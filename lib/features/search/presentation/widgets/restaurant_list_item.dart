@@ -33,10 +33,15 @@ class RestaurantListItem extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = AppColors.of(context);
     return InkWell(
-      onTap: () => context.push(
-        AppRoutes.restaurantDetailFor(restaurant.id),
-        extra: AnalyticsOrigin.searchResult,
-      ),
+      onTap: () {
+        // Dismiss the search-bar keyboard so it doesn't hang over the detail
+        // screen during the push transition.
+        FocusManager.instance.primaryFocus?.unfocus();
+        context.push(
+          AppRoutes.restaurantDetailFor(restaurant.id),
+          extra: AnalyticsOrigin.searchResult,
+        );
+      },
       child: Padding(
         padding: const EdgeInsets.symmetric(
           horizontal: AppConstants.spaceLg,
