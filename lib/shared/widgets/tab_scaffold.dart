@@ -52,6 +52,9 @@ class TabScaffold extends ConsumerWidget {
     final labels = NavLabels.of(ref.watch(appLocaleProvider).languageCode);
     final compact = ref.watch(navCompactProvider);
     final safeBottom = MediaQuery.viewPaddingOf(context).bottom;
+    // Read from the shell's own context so the bar tracks the OS keyboard
+    // animation. Uniform across all tabs: keyboard visible → bar hidden.
+    final keyboardVisible = MediaQuery.viewInsetsOf(context).bottom > 0;
 
     void goBranch(int branch) {
       navigationShell.goBranch(
@@ -74,6 +77,10 @@ class TabScaffold extends ConsumerWidget {
     return Scaffold(
       // Floating bar overlays the content; let the body run full-bleed under it.
       extendBody: true,
+      // Don't resize the shell for the keyboard — branch screens own their
+      // insets, and resizing here would jump the bar above the keyboard
+      // before the slide-out animation can play.
+      resizeToAvoidBottomInset: false,
       body: Stack(
         children: [
           Positioned.fill(child: navigationShell),
@@ -83,12 +90,28 @@ class TabScaffold extends ConsumerWidget {
             // Bottom-anchored + no fixed height, so the bar shrinks/grows from
             // its bottom edge as it animates between expanded/compact.
             bottom: safeBottom + kNavEdgeInset,
-            child: _FloatingBar(
-              compact: compact,
-              currentIndex: navigationShell.currentIndex,
-              labels: labels,
-              onTabSelected: goBranch,
-              onReview: onWriteReview,
+            // While the keyboard is up the bar slides off the bottom edge and
+            // fades; IgnorePointer keeps the invisible bar from eating taps.
+            child: IgnorePointer(
+              ignoring: keyboardVisible,
+              child: AnimatedSlide(
+                // 2x own height clears bar + margins + home indicator.
+                offset: keyboardVisible ? const Offset(0, 2) : Offset.zero,
+                duration: _navAnim,
+                curve: Curves.easeOut,
+                child: AnimatedOpacity(
+                  opacity: keyboardVisible ? 0 : 1,
+                  duration: _navAnim,
+                  curve: Curves.easeOut,
+                  child: _FloatingBar(
+                    compact: compact,
+                    currentIndex: navigationShell.currentIndex,
+                    labels: labels,
+                    onTabSelected: goBranch,
+                    onReview: onWriteReview,
+                  ),
+                ),
+              ),
             ),
           ),
         ],
