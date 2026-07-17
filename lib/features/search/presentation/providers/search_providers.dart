@@ -68,6 +68,21 @@ final _placesDatasourceProvider = Provider<PlacesApiDatasource>(
   (ref) => PlacesApiDatasource(),
 );
 
+/// True when the nearby search couldn't run for lack of a location: no text
+/// query, no "search this area" override, and the one-shot GPS fetch resolved
+/// to `null` (services off / permission denied).
+///
+/// [searchResultsProvider] returns an empty list in that case, which is
+/// indistinguishable from "nearby genuinely has nothing" — the sheet watches
+/// this flag to show a "location unavailable" message instead of the
+/// misleading "no restaurants nearby".
+final searchLocationUnavailableProvider = Provider<bool>((ref) {
+  if (ref.watch(searchQueryProvider).trim().length >= 2) return false;
+  if (ref.watch(searchCenterOverrideProvider) != null) return false;
+  final position = ref.watch(currentPositionProvider);
+  return position.hasValue && position.value == null;
+});
+
 /// Restaurants shown in the Search tab — either nearby (no query) or text
 /// search (≥ 2 chars), narrowed by the active filter chip.
 ///
@@ -250,19 +265,21 @@ class SearchHeaderLabels {
     required this.nearYou,
     required this.results,
     required this.found,
-    required this.filter,
     required this.noResults,
     required this.tryDifferent,
     required this.clearSearch,
+    required this.noNearby,
+    required this.locationUnavailable,
   });
 
   final String nearYou;
   final String results;
   final String Function(int n) found;
-  final String filter;
   final String noResults;
   final String tryDifferent;
   final String clearSearch;
+  final String noNearby;
+  final String locationUnavailable;
 
   static SearchHeaderLabels of(String code) {
     switch (code) {
@@ -271,20 +288,22 @@ class SearchHeaderLabels {
           nearYou: '近くのお店',
           results: '検索結果',
           found: (n) => '$n件',
-          filter: 'フィルター',
           noResults: '結果が見つかりませんでした',
           tryDifferent: '別のキーワードでお試しください',
           clearSearch: '検索をクリア',
+          noNearby: '近くにお店が見つかりませんでした',
+          locationUnavailable: '位置情報を取得できません。位置情報の設定をご確認ください',
         );
       case 'ko':
         return SearchHeaderLabels(
           nearYou: '근처',
           results: '검색 결과',
           found: (n) => '$n개',
-          filter: '필터',
           noResults: '검색 결과가 없습니다',
           tryDifferent: '다른 키워드로 시도해 보세요',
           clearSearch: '검색 지우기',
+          noNearby: '근처에 식당을 찾지 못했습니다',
+          locationUnavailable: '위치 정보를 사용할 수 없습니다. 위치 권한을 확인해 주세요',
         );
       case 'en':
       default:
@@ -292,10 +311,12 @@ class SearchHeaderLabels {
           nearYou: 'Near you',
           results: 'Results',
           found: (n) => '$n found',
-          filter: 'Filter',
           noResults: 'No results found',
           tryDifferent: 'Try different keywords',
           clearSearch: 'Clear search',
+          noNearby: 'No restaurants nearby',
+          locationUnavailable:
+              'Location unavailable — check location permission',
         );
     }
   }

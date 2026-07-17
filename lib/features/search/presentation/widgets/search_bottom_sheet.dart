@@ -137,7 +137,17 @@ class SearchBottomSheet extends ConsumerWidget {
                           if (hasQuery) {
                             return [const SearchEmptyState()];
                           }
-                          return [const _NearbyEmptyRow()];
+                          // Empty nearby result is ambiguous: no GPS fix vs
+                          // genuinely nothing around — say which one it was.
+                          final noFix = ref
+                              .watch(searchLocationUnavailableProvider);
+                          return [
+                            _NearbyEmptyRow(
+                              message: noFix
+                                  ? labels.locationUnavailable
+                                  : labels.noNearby,
+                            ),
+                          ];
                         }
                         return [
                           for (final r in items)
@@ -229,27 +239,9 @@ class _SheetHeader extends StatelessWidget {
               ),
             ),
           ],
-          const Spacer(),
-          if (!hasQuery)
-            InkWell(
-              onTap: () {},
-              borderRadius: BorderRadius.circular(AppConstants.radiusSm),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: AppConstants.spaceXs,
-                  vertical: 2,
-                ),
-                child: Text(
-                  labels.filter,
-                  style: TextStyle(
-                    fontFamily: 'Pretendard',
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
-                    color: c.primary,
-                  ),
-                ),
-              ),
-            ),
+          // The dead "Filter" text button that used to sit here was removed
+          // (v1.1 deferral, same rationale as the See-all removals) — the
+          // chip row right below already exposes filtering.
         ],
       ),
     );
@@ -266,7 +258,9 @@ class _LoadingRow extends StatelessWidget {
 }
 
 class _NearbyEmptyRow extends StatelessWidget {
-  const _NearbyEmptyRow();
+  const _NearbyEmptyRow({required this.message});
+
+  final String message;
 
   @override
   Widget build(BuildContext context) {
@@ -277,7 +271,7 @@ class _NearbyEmptyRow extends StatelessWidget {
         vertical: AppConstants.spaceLg,
       ),
       child: Text(
-        'No restaurants nearby',
+        message,
         style: TextStyle(
           fontFamily: 'Pretendard',
           fontSize: 13,
