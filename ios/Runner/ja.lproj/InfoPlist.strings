@@ -1,0 +1,3 @@
+"NSLocationWhenInUseUsageDescription" = "Tabeminaは、地図を現在地に合わせ、近くのお店を探すために位置情報を使用します。";
+"NSCameraUsageDescription" = "Tabeminaは、レビューに添付する料理の写真を撮影するためにカメラを使用します。";
+"NSPhotoLibraryUsageDescription" = "Tabeminaは、レビューに添付する料理の写真を選択するためにフォトライブラリを使用します。";

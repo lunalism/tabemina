@@ -1,0 +1,3 @@
+"NSLocationWhenInUseUsageDescription" = "Tabemina uses your location to center the map on where you are and to find restaurants nearby.";
+"NSCameraUsageDescription" = "Tabemina needs camera access so you can take photos of your meal to attach to your review.";
+"NSPhotoLibraryUsageDescription" = "Tabemina needs photo library access so you can pick existing meal photos to attach to your review.";
