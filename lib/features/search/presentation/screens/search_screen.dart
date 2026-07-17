@@ -7,6 +7,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/providers/app_locale_provider.dart';
+import '../../../../core/utils/keyboard.dart';
 import '../providers/search_providers.dart';
 import '../widgets/gps_button.dart';
 import '../widgets/search_area_button.dart';
@@ -53,6 +54,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   void _onCameraMove(CameraPosition pos) {
     _currentCameraCenter = pos.target;
   }
+
 
   void _onCameraIdle() {
     // Text search owns its own bias — don't compete with the "this area"
@@ -118,6 +120,10 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
 
     return Scaffold(
       extendBodyBehindAppBar: true,
+      // Full-bleed map + fraction-sized sheet must not resize with the
+      // keyboard: a resizing body animates the sheet's availablePixels, so a
+      // mid-drag keyboard dismissal would move snap targets under the finger.
+      resizeToAvoidBottomInset: false,
       body: LayoutBuilder(
         builder: (context, constraints) {
           final bodyHeight = constraints.maxHeight;
@@ -131,6 +137,11 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                 markers: markers,
                 myLocationButtonEnabled: false,
                 zoomControlsEnabled: false,
+                // Map interaction while typing means "done with the keyboard".
+                onTap: (_) => dismissKeyboard(),
+                // Fires once per gesture, unlike onCameraMove — the pill
+                // logic in _onCameraMove/_onCameraIdle stays untouched.
+                onCameraMoveStarted: dismissKeyboard,
                 onCameraMove: _onCameraMove,
                 onCameraIdle: _onCameraIdle,
                 padding: EdgeInsets.only(

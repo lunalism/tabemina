@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/providers/app_locale_provider.dart';
+import '../../../../core/utils/keyboard.dart';
 import '../providers/search_providers.dart';
 
 /// Horizontally scrollable row of cuisine filter chips.
@@ -31,8 +32,12 @@ class FilterChipRow extends ConsumerWidget {
           return _FilterChip(
             label: filterChipLabel(filter, lang),
             selected: filter == selected,
-            onTap: () =>
-                ref.read(searchFilterProvider.notifier).select(filter),
+            onTap: () {
+              // Picking a chip is a switch from typing to browsing —
+              // drop the keyboard along with it.
+              dismissKeyboard();
+              ref.read(searchFilterProvider.notifier).select(filter);
+            },
           );
         },
       ),

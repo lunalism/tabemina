@@ -7,6 +7,7 @@ import '../../../../core/providers/app_locale_provider.dart';
 import '../../../../core/providers/connectivity_providers.dart';
 import '../../../../core/providers/location_providers.dart';
 import '../../../../core/services/connectivity_service.dart';
+import '../../../../core/utils/keyboard.dart';
 import '../../../../shared/widgets/app_error_kind.dart';
 import '../../../../shared/widgets/app_state_labels.dart';
 import '../../../../shared/widgets/nav_compact_scroller.dart';
@@ -55,116 +56,138 @@ class SearchBottomSheet extends ConsumerWidget {
         .watch(currentPositionProvider)
         .maybeWhen(data: (p) => p, orElse: () => null);
 
-    return DraggableScrollableSheet(
-      controller: controller,
-      initialChildSize: collapsedSize,
-      minChildSize: collapsedSize,
-      maxChildSize: fullSize,
-      snap: true,
-      snapSizes: const [collapsedSize, halfSize, fullSize],
-      snapAnimationDuration: const Duration(milliseconds: 220),
-      builder: (context, scrollController) {
-        return DecoratedBox(
-          decoration: BoxDecoration(
-            color: c.bgCard,
-            borderRadius: const BorderRadius.vertical(
-              top: Radius.circular(AppConstants.radiusLg),
-            ),
-            boxShadow: const [
-              BoxShadow(
-                color: Color(0x14000000),
-                blurRadius: 16,
-                offset: Offset(0, -4),
-              ),
-            ],
-          ),
-          child: ClipRRect(
-            borderRadius: const BorderRadius.vertical(
-              top: Radius.circular(AppConstants.radiusLg),
-            ),
-            child: NavCompactScroller(
-              child: ListView(
-                controller: scrollController,
-                // Clear the floating nav so the last result is reachable.
-                padding: EdgeInsets.only(
-                  bottom: floatingNavContentInset(context),
-                ),
-                children: [
-                  _DragHandle(color: handleColor),
-                  _SheetHeader(
-                    hasQuery: hasQuery,
-                    count: asyncResults.maybeWhen(
-                      data: (list) => list.length,
-                      orElse: () => 0,
-                    ),
-                    // Offline shows "0 found" which reads as "nothing here"; hide
-                    // the count and let the offline state below explain.
-                    showCount: !isOffline,
-                    labels: labels,
-                  ),
-                  const SizedBox(height: AppConstants.spaceSm),
-                  const FilterChipRow(),
-                  const SizedBox(height: AppConstants.spaceXs),
-                  // Offline: a passive offline state stands in for the results —
-                  // no Places query runs (the provider short-circuits too).
-                  if (isOffline)
-                    const Padding(
-                      padding: EdgeInsets.symmetric(
-                        vertical: AppConstants.spaceLg,
-                      ),
-                      child: SearchOfflineState(),
-                    )
-                  else
-                    ...asyncResults.when(
-                      loading: () => [const _LoadingRow()],
-                      error: (e, _) => [
-                        Padding(
-                          padding: const EdgeInsets.symmetric(
-                            vertical: AppConstants.spaceLg,
-                          ),
-                          child: errorStateView(
-                            context,
-                            error: e,
-                            labels: AppStateLabels.of(lang),
-                            onRetry: () =>
-                                ref.invalidate(searchResultsProvider),
-                            compact: true,
-                          ),
-                        ),
-                      ],
-                      data: (items) {
-                        if (items.isEmpty) {
-                          if (hasQuery) {
-                            return [const SearchEmptyState()];
-                          }
-                          // Empty nearby result is ambiguous: no GPS fix vs
-                          // genuinely nothing around — say which one it was.
-                          final noFix = ref
-                              .watch(searchLocationUnavailableProvider);
-                          return [
-                            _NearbyEmptyRow(
-                              message: noFix
-                                  ? labels.locationUnavailable
-                                  : labels.noNearby,
-                            ),
-                          ];
-                        }
-                        return [
-                          for (final r in items)
-                            RestaurantListItem(
-                              restaurant: r,
-                              userLat: userPosition?.latitude,
-                              userLng: userPosition?.longitude,
-                            ),
-                        ];
-                      },
-                    ),
-                ],
-              ),
-            ),
-          ),
-        );
+    // Below full expansion the sheet consumes drags as EXTENT changes — the
+    // inner list's scroll position never moves, so its onDrag
+    // keyboardDismissBehavior never fires. Extent notifications cover that
+    // case.
+    return NotificationListener<DraggableScrollableNotification>(
+      onNotification: (notification) {
+        // Raw view insets (not MediaQuery — no rebuild dependency): only act
+        // when the keyboard is actually up. Without this, focus isn't a
+        // reliable proxy — the GoogleMap UiKitView requests LEAF focus on
+        // native touches (platform_view.dart onFocus), so after any map pan
+        // the first extent frame of every sheet drag would run a real
+        // unfocus + platform-view Focus rebuild mid-gesture (visible jitter).
+        if (View.of(context).viewInsets.bottom > 0) {
+          dismissKeyboard();
+        }
+        return false; // Keep bubbling — don't swallow the notification.
       },
+      child: DraggableScrollableSheet(
+        controller: controller,
+        initialChildSize: collapsedSize,
+        minChildSize: collapsedSize,
+        maxChildSize: fullSize,
+        snap: true,
+        snapSizes: const [collapsedSize, halfSize, fullSize],
+        snapAnimationDuration: const Duration(milliseconds: 220),
+        builder: (context, scrollController) {
+          return DecoratedBox(
+            decoration: BoxDecoration(
+              color: c.bgCard,
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(AppConstants.radiusLg),
+              ),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x14000000),
+                  blurRadius: 16,
+                  offset: Offset(0, -4),
+                ),
+              ],
+            ),
+            child: ClipRRect(
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(AppConstants.radiusLg),
+              ),
+              child: NavCompactScroller(
+                child: ListView(
+                  controller: scrollController,
+                  // Dragging the results list is a natural "done typing" signal.
+                  keyboardDismissBehavior:
+                      ScrollViewKeyboardDismissBehavior.onDrag,
+                  // Clear the floating nav so the last result is reachable.
+                  padding: EdgeInsets.only(
+                    bottom: floatingNavContentInset(context),
+                  ),
+                  children: [
+                    _DragHandle(color: handleColor),
+                    _SheetHeader(
+                      hasQuery: hasQuery,
+                      count: asyncResults.maybeWhen(
+                        data: (list) => list.length,
+                        orElse: () => 0,
+                      ),
+                      // Offline shows "0 found" which reads as "nothing here"; hide
+                      // the count and let the offline state below explain.
+                      showCount: !isOffline,
+                      labels: labels,
+                    ),
+                    const SizedBox(height: AppConstants.spaceSm),
+                    const FilterChipRow(),
+                    const SizedBox(height: AppConstants.spaceXs),
+                    // Offline: a passive offline state stands in for the results —
+                    // no Places query runs (the provider short-circuits too).
+                    if (isOffline)
+                      const Padding(
+                        padding: EdgeInsets.symmetric(
+                          vertical: AppConstants.spaceLg,
+                        ),
+                        child: SearchOfflineState(),
+                      )
+                    else
+                      ...asyncResults.when(
+                        loading: () => [const _LoadingRow()],
+                        error: (e, _) => [
+                          Padding(
+                            padding: const EdgeInsets.symmetric(
+                              vertical: AppConstants.spaceLg,
+                            ),
+                            child: errorStateView(
+                              context,
+                              error: e,
+                              labels: AppStateLabels.of(lang),
+                              onRetry: () =>
+                                  ref.invalidate(searchResultsProvider),
+                              compact: true,
+                            ),
+                          ),
+                        ],
+                        data: (items) {
+                          if (items.isEmpty) {
+                            if (hasQuery) {
+                              return [const SearchEmptyState()];
+                            }
+                            // Empty nearby result is ambiguous: no GPS fix vs
+                            // genuinely nothing around — say which one it was.
+                            final noFix = ref.watch(
+                              searchLocationUnavailableProvider,
+                            );
+                            return [
+                              _NearbyEmptyRow(
+                                message: noFix
+                                    ? labels.locationUnavailable
+                                    : labels.noNearby,
+                              ),
+                            ];
+                          }
+                          return [
+                            for (final r in items)
+                              RestaurantListItem(
+                                restaurant: r,
+                                userLat: userPosition?.latitude,
+                                userLng: userPosition?.longitude,
+                              ),
+                          ];
+                        },
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      ),
     );
   }
 }
