@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/providers/app_locale_provider.dart';
@@ -36,7 +38,50 @@ final hasDraftProvider = FutureProvider<bool>((ref) {
 /// personal, not a rule violation.
 final placeReviewsProvider =
     StreamProvider.family<List<ReviewEntity>, String>((ref, placeId) {
-  return ref.watch(reviewRepositoryProvider).watchReviewsForPlace(placeId);
+  // The repository stream reports an offline empty cache as a
+  // ReviewsUnavailableException error EVENT (the subscription stays alive —
+  // see watchReviewsForPlace). Offline (or connectivity unknown) that is
+  // surfaced immediately so the detail page shows its error + retry state.
+  // While ONLINE the same event usually fires transiently — a cold listen
+  // can deliver a cache-first empty snapshot moments before the server one —
+  // but "online" only means a network interface is up (captive portal /
+  // backend outage still report online), so the error can't simply be
+  // dropped: with no server snapshot following, that would leave the section
+  // loading forever. Instead hold it for a short grace period and emit it
+  // only if no snapshot arrives in time.
+  const grace = Duration(seconds: 4);
+  final controller = StreamController<List<ReviewEntity>>();
+  Timer? pendingError;
+  final sub =
+      ref.watch(reviewRepositoryProvider).watchReviewsForPlace(placeId).listen(
+    (reviews) {
+      pendingError?.cancel();
+      pendingError = null;
+      controller.add(reviews);
+    },
+    onError: (Object e, StackTrace st) {
+      final online = ref.read(connectivityStatusProvider).asData?.value ==
+          NetworkStatus.online;
+      if (e is ReviewsUnavailableException && online) {
+        pendingError ??= Timer(grace, () => controller.addError(e, st));
+      } else {
+        pendingError?.cancel();
+        pendingError = null;
+        controller.addError(e, st);
+      }
+    },
+    onDone: () {
+      pendingError?.cancel();
+      pendingError = null;
+      controller.close();
+    },
+  );
+  ref.onDispose(() {
+    pendingError?.cancel();
+    sub.cancel();
+    controller.close();
+  });
+  return controller.stream;
 });
 
 /// [placeReviewsProvider] with blocked authors removed — the RENDERED list for

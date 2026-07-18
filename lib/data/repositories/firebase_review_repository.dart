@@ -235,11 +235,28 @@ class FirebaseReviewRepository implements ReviewRepository {
 
   @override
   Stream<List<ReviewEntity>> watchReviewsForPlace(String placeId) {
+    // includeMetadataChanges so the cache→server transition emits even when
+    // the docs are identical (e.g. a place with zero reviews): without it the
+    // error event below would never be superseded once the server confirms
+    // the empty result.
     return _reviews
         .where('placeId', isEqualTo: placeId)
         .orderBy('createdAt', descending: true)
-        .snapshots()
-        .map((s) => _visible(s.docs));
+        .snapshots(includeMetadataChanges: true)
+        .map((s) {
+      // Same failure mode as getLatestReviews: offline, snapshots() serves
+      // the cache, which on a fresh install is empty. Left alone that renders
+      // as a fake "no reviews yet"; surface it as a failure instead so the
+      // detail page shows its error + retry state. Throwing inside map()
+      // emits an error EVENT without cancelling the subscription — when
+      // connectivity returns the next server snapshot still flows through
+      // and replaces the error. A warm cache (docs present) still serves
+      // stale data offline, which is desired.
+      if (s.metadata.isFromCache && s.docs.isEmpty) {
+        throw const ReviewsUnavailableException();
+      }
+      return _visible(s.docs);
+    });
   }
 
   @override
