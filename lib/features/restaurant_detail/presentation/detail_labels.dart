@@ -4,7 +4,8 @@
 /// The "Review" and "Write review" labels are NOT defined here — they reuse
 /// `NavLabels.review` / `NavLabels.writeReview` so the verbs stay identical to
 /// the bottom navigation. This table holds only the detail-specific labels:
-/// the secondary action buttons, the hours chip, and the rating-count suffix.
+/// the secondary action buttons, the hours chip, the rating-count suffix, and
+/// the deleted-place (not-found) state.
 class DetailLabels {
   const DetailLabels._(
     this._lang, {
@@ -13,6 +14,9 @@ class DetailLabels {
     required this.share,
     required this.openNow,
     required this.closed,
+    required this.notFoundTitle,
+    required this.notFoundDescription,
+    required this.notFoundBack,
   });
 
   final String _lang;
@@ -29,6 +33,12 @@ class DetailLabels {
   /// Open-status chip when the place is currently open / closed.
   final String openNow;
   final String closed;
+
+  /// Deleted-place state (Places 404): title, body, and the single
+  /// back-navigation button — deliberately no retry, it can never succeed.
+  final String notFoundTitle;
+  final String notFoundDescription;
+  final String notFoundBack;
 
   /// "({n} reviews)" suffix next to the rating.
   String reviewCount(int n) {
@@ -61,6 +71,9 @@ class DetailLabels {
     share: 'Share',
     openNow: 'Open now',
     closed: 'Closed',
+    notFoundTitle: 'This restaurant is no longer available',
+    notFoundDescription: 'It may have closed or been removed from the map.',
+    notFoundBack: 'Go back',
   );
 
   static const _ja = DetailLabels._(
@@ -70,6 +83,9 @@ class DetailLabels {
     share: 'シェア',
     openNow: '営業中',
     closed: '閉店',
+    notFoundTitle: 'このお店は表示できません',
+    notFoundDescription: '閉店したか、地図から削除された可能性があります。',
+    notFoundBack: '戻る',
   );
 
   static const _ko = DetailLabels._(
@@ -79,5 +95,8 @@ class DetailLabels {
     share: '공유',
     openNow: '영업 중',
     closed: '영업 종료',
+    notFoundTitle: '더 이상 확인할 수 없는 가게예요',
+    notFoundDescription: '폐업했거나 지도에서 삭제되었을 수 있어요.',
+    notFoundBack: '돌아가기',
   );
 }

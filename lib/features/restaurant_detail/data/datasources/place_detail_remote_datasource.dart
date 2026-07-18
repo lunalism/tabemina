@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 
 import '../../../../core/config/api_keys.dart';
 import '../../../../core/constants/api_constants.dart';
+import '../../../../core/utils/not_found_exception.dart';
 import '../models/place_detail.dart';
 
 /// Thin client over Google Places (New) — Place Details endpoint.
@@ -46,6 +47,14 @@ class PlaceDetailRemoteDatasource {
       },
     );
 
+    if (response.statusCode == 404) {
+      // Places returns NOT_FOUND for ids that no longer resolve (closed
+      // place, merged duplicate, removed listing) — a permanent condition,
+      // not a transient failure. Distinct type so the UI can show a
+      // "no longer available" state instead of a retry that can never
+      // succeed.
+      throw PlaceNotFoundException(body: response.body);
+    }
     if (response.statusCode != 200) {
       throw PlaceDetailException(
         statusCode: response.statusCode,
@@ -80,4 +89,12 @@ class PlaceDetailException implements Exception {
 
   @override
   String toString() => 'PlaceDetailException($statusCode): $body';
+}
+
+/// The place id no longer resolves (Places NOT_FOUND). Implements the core
+/// [NotFoundException] marker so `classifyError` maps it to the non-retriable
+/// not-found presentation.
+class PlaceNotFoundException extends PlaceDetailException
+    implements NotFoundException {
+  PlaceNotFoundException({required super.body}) : super(statusCode: 404);
 }

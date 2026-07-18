@@ -16,11 +16,13 @@ import '../../../../presentation/widgets/auth_gate.dart';
 import '../../../../shared/widgets/app_error_kind.dart';
 import '../../../../shared/widgets/app_state_labels.dart';
 import '../../../../shared/widgets/cooldown_labels.dart';
+import '../../../../shared/widgets/empty_state_view.dart';
 import '../../../../shared/widgets/shimmer_box.dart';
 import '../../../../shared/widgets/tabemina_snackbar.dart';
 import '../../../bookmarks/presentation/bookmarks_labels.dart';
 import '../../data/datasources/place_detail_remote_datasource.dart';
 import '../../data/models/place_detail.dart';
+import '../detail_labels.dart';
 import '../providers/place_detail_provider.dart';
 import '../providers/restaurant_viewed_provider.dart';
 import '../widgets/action_buttons.dart';
@@ -317,6 +319,28 @@ class _ErrorView extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final lang = ref.watch(appLocaleProvider).languageCode;
+    // A deleted place (Places 404) is permanent — a retry can never succeed,
+    // so that kind gets a "no longer available" state whose only action is
+    // going back, instead of the generic retriable error view.
+    final Widget stateView;
+    if (classifyError(error) == AppErrorKind.notFound) {
+      final labels = DetailLabels.of(lang);
+      stateView = EmptyStateView(
+        icon: Icons.storefront_outlined,
+        iconCircleColor: EmptyStateView.grayCircle(context),
+        title: labels.notFoundTitle,
+        description: labels.notFoundDescription,
+        buttonText: labels.notFoundBack,
+        onButtonPressed: () => context.pop(),
+      );
+    } else {
+      stateView = errorStateView(
+        context,
+        error: error,
+        labels: AppStateLabels.of(lang),
+        onRetry: onRetry,
+      );
+    }
     return SafeArea(
       child: Stack(
         children: [
@@ -325,14 +349,7 @@ class _ErrorView extends ConsumerWidget {
             left: 8,
             child: HeroBackButton(onTap: () => context.pop()),
           ),
-          Center(
-            child: errorStateView(
-              context,
-              error: error,
-              labels: AppStateLabels.of(lang),
-              onRetry: onRetry,
-            ),
-          ),
+          Center(child: stateView),
         ],
       ),
     );

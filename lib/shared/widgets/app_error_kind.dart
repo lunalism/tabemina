@@ -3,18 +3,22 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 
+import '../../core/utils/not_found_exception.dart';
 import 'app_state_labels.dart';
 import 'empty_state_view.dart';
 
 /// How a failed request should be presented to the user.
-enum AppErrorKind { network, server }
+enum AppErrorKind { network, server, notFound }
 
 /// Classify a thrown error as a connectivity problem vs. a server-side
-/// failure, without pulling in connectivity_plus. A `SocketException` or
-/// a "failed host lookup" message means the device couldn't reach the
-/// host at all (offline / DNS) → network. Everything else (HTTP 5xx, bad
-/// payloads, unexpected exceptions) → server.
+/// failure, without pulling in connectivity_plus. A [NotFoundException]
+/// means the resource permanently no longer exists (deleted place) →
+/// notFound. A `SocketException` or a "failed host lookup" message means
+/// the device couldn't reach the host at all (offline / DNS) → network.
+/// Everything else (HTTP 5xx, bad payloads, unexpected exceptions) →
+/// server.
 AppErrorKind classifyError(Object error) {
+  if (error is NotFoundException) return AppErrorKind.notFound;
   if (error is SocketException) return AppErrorKind.network;
   if (error is TimeoutException) return AppErrorKind.network;
   final text = error.toString().toLowerCase();
@@ -53,6 +57,12 @@ EmptyStateView errorStateView(
         compact: compact,
       );
     case AppErrorKind.server:
+    // notFound has no generic presentation — a retry CTA makes no sense for
+    // a permanently missing resource, and the right copy is caller-specific.
+    // Callers with a dedicated not-found UX (e.g. the restaurant detail
+    // screen) check classifyError themselves before calling this; anywhere
+    // else the server view is the least-wrong fallback.
+    case AppErrorKind.notFound:
       return EmptyStateView(
         icon: Icons.cloud_off_rounded,
         iconCircleColor: EmptyStateView.errorCircle(context),
