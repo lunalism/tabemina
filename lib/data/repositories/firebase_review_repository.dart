@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart';
@@ -259,6 +261,16 @@ class FirebaseReviewRepository implements ReviewRepository {
     });
   }
 
+  /// Per-object bound on each Storage delete/list call in [deleteReview].
+  /// The Storage SDK's own retry window is ~2 minutes, which offline left
+  /// the delete spinner up until reconnect. Per-object (not wrapping the
+  /// whole phase) so a multi-photo review on a slow-but-working network
+  /// isn't failed while every individual call is succeeding; offline the
+  /// FIRST call times out, and a [TimeoutException] aborts the whole
+  /// operation before the doc delete (see below), so the failure surfaces
+  /// in ~10s either way.
+  static const Duration _storageDeleteTimeout = Duration(seconds: 10);
+
   @override
   Future<void> deleteReview(String reviewId) async {
     // Read the doc first to recover the exact Storage paths — the
@@ -268,12 +280,22 @@ class FirebaseReviewRepository implements ReviewRepository {
     final snap = await docRef.get();
     final data = snap.data();
 
+    // TimeoutException propagates out of both branches below ON PURPOSE:
+    // a doc delete after skipped Storage deletes would orphan the photos
+    // permanently (the B-5 orphan pattern), so timeout = the whole delete
+    // fails, the review stays, and the user retries online. No rollback for
+    // objects already deleted before the timeout — a retried delete
+    // re-attempts idempotently (missing objects fall into the swallowed
+    // object-not-found case), and the server-side reconciliation backlog
+    // item covers any residue.
     if (data != null) {
       final storagePaths = _stringList(data['photoStoragePaths']);
       if (storagePaths.isNotEmpty) {
         for (final path in storagePaths) {
           try {
-            await _storage.ref(path).delete();
+            await _storage.ref(path).delete().timeout(_storageDeleteTimeout);
+          } on TimeoutException {
+            rethrow;
           } catch (e) {
             // Photo may already be gone — ignore so the doc still deletes.
             debugPrint('Failed to delete photo at $path: $e');
@@ -285,18 +307,25 @@ class FirebaseReviewRepository implements ReviewRepository {
         // folder-wide cleanup; old blobs may already be orphaned, which is
         // acceptable.
         try {
-          final listing = await _storage.ref('reviews/$reviewId').listAll();
+          final listing = await _storage
+              .ref('reviews/$reviewId')
+              .listAll()
+              .timeout(_storageDeleteTimeout);
           for (final item in listing.items) {
-            await item.delete();
+            await item.delete().timeout(_storageDeleteTimeout);
           }
+        } on TimeoutException {
+          rethrow;
         } catch (e) {
           debugPrint('Old-style photo cleanup failed: $e');
         }
       }
     }
 
-    // Delete the document last — if a Storage delete throws above it's
-    // swallowed, so we always reach here and the card disappears.
+    // Delete the document last — reached only when the Storage phase ran to
+    // completion (non-timeout Storage errors are swallowed above, timeouts
+    // abort). Offline queueing of THIS delete (it completes on reconnect)
+    // is fine — by now the photos are gone.
     await docRef.delete();
   }
 
