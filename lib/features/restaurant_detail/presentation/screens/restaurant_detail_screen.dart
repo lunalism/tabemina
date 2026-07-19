@@ -440,6 +440,9 @@ Future<void> _toggleBookmark(
       if (!acked) {
         // Queued-offline: keep the action's icon so the direction still
         // reads (saved vs removed), but say "will sync" instead of done.
+        // Longer duration than the 2s default: this toast already lands 4s
+        // after the tap, when the user's eyes have moved on — QA missed it
+        // while actively watching for it.
         showTabeminaSnackbar(
           context,
           message: labels.bookmarkQueuedOffline,
@@ -447,6 +450,7 @@ Future<void> _toggleBookmark(
               ? Icons.bookmark_outline_rounded
               : Icons.bookmark_rounded,
           iconColor: alreadySaved ? null : coral,
+          duration: const Duration(seconds: 4),
         );
       } else if (alreadySaved) {
         showTabeminaSnackbar(
