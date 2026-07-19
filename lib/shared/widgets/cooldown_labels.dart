@@ -8,6 +8,7 @@
 class CooldownLabels {
   const CooldownLabels._({
     required this.title,
+    required this.confirm,
     required this.lessThanAMinute,
     required this.messageTemplate,
     required this.detailTemplate,
@@ -16,6 +17,9 @@ class CooldownLabels {
 
   /// Dialog title (Detail page).
   final String title;
+
+  /// Dialog confirm button (Detail page).
+  final String confirm;
 
   final String lessThanAMinute;
   final String Function(String time) messageTemplate;
@@ -38,6 +42,7 @@ class CooldownLabels {
       case 'ja':
         return CooldownLabels._(
           title: 'しばらくお待ちください',
+          confirm: 'OK',
           lessThanAMinute: '1分以内',
           formatTime: (h, m) => '$h時間$m分',
           messageTemplate: (t) => 'このお店には残り$t後にレビューできます',
@@ -46,6 +51,7 @@ class CooldownLabels {
       case 'ko':
         return CooldownLabels._(
           title: '잠시만 기다려주세요',
+          confirm: '확인',
           lessThanAMinute: '1분 이내',
           formatTime: (h, m) => '$h시간 $m분',
           messageTemplate: (t) => '이 음식점은 $t 후에 다시 리뷰할 수 있습니다',
@@ -55,6 +61,7 @@ class CooldownLabels {
       default:
         return CooldownLabels._(
           title: 'Please wait',
+          confirm: 'OK',
           lessThanAMinute: 'less than 1 minute',
           formatTime: (h, m) => '${h}h ${m}m',
           messageTemplate: (t) => 'You can review this restaurant again in $t',

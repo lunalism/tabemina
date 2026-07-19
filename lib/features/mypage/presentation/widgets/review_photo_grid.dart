@@ -133,22 +133,71 @@ class _ReviewCell extends ConsumerWidget {
     WidgetRef ref,
     MyPageLabels labels,
   ) async {
+    // File-scoped guard (this cell is a stateless ConsumerWidget, so the
+    // flag can't live on the instance): a second confirm while a delete is
+    // in flight is a no-op. The modal barrier below blocks same-screen taps
+    // for the duration anyway.
+    if (_isDeletingReview) return;
+    _isDeletingReview = true;
+    // Blocking barrier + spinner for the duration of the delete (Storage
+    // photos go first, sequentially — seconds on a slow network).
+    // PopScope(canPop: false): barrierDismissible only stops barrier taps,
+    // not the Android system Back action. The dialog's own context is
+    // retained so dismissal can only ever pop the spinner route itself,
+    // never an unrelated route underneath.
+    BuildContext? dialogContext;
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) {
+        dialogContext = ctx;
+        return const PopScope(
+          canPop: false,
+          child: Center(
+            child: SizedBox(
+              width: 28,
+              height: 28,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: Colors.white,
+              ),
+            ),
+          ),
+        );
+      },
+    );
+    var failed = false;
     try {
       await ref.read(reviewRepositoryProvider).deleteReview(review.reviewId);
+    } catch (_) {
+      failed = true;
+    } finally {
+      _isDeletingReview = false;
+      // Pop the spinner barrier before any snackbar goes up.
+      final ctx = dialogContext;
+      if (ctx != null && ctx.mounted) {
+        Navigator.of(ctx).pop();
+      }
+    }
+    if (!failed) {
       // Refresh the user's grid + the home feed. Detail-page review streams
       // pick up the deletion on their own.
       ref.invalidate(userReviewsProvider);
       ref.invalidate(latestReviewsProvider);
-      if (context.mounted) {
-        showTabeminaSnackbar(context, message: labels.reviewDeleted);
-      }
-    } catch (_) {
-      if (context.mounted) {
-        showTabeminaSnackbar(context, message: labels.reviewDeleteFailed);
-      }
+    }
+    if (context.mounted) {
+      showTabeminaSnackbar(
+        context,
+        message: failed ? labels.reviewDeleteFailed : labels.reviewDeleted,
+      );
     }
   }
 }
+
+/// In-flight guard for [_ReviewCell._delete]. See the comment at the check
+/// site; Firestore's delete is idempotent so this is belt-and-braces against
+/// double invocation, not a correctness requirement.
+bool _isDeletingReview = false;
 
 class _Placeholder extends StatelessWidget {
   const _Placeholder();

@@ -122,6 +122,12 @@ Future<void> _blockFlow(
   }
 }
 
+/// In-flight guard for the delete branch of [_ownerActions]. File-scoped:
+/// the modal barrier already blocks same-screen taps while deleting, but the
+/// flag also makes a queued second confirm a no-op. deleteReview is not
+/// instant — it deletes Storage photos sequentially before the doc.
+bool _isDeletingReview = false;
+
 /// Unchanged edit/delete behaviour, mirroring the My Page grid so the user's
 /// own review behaves identically wherever it's long-pressed.
 Future<void> _ownerActions(
@@ -140,17 +146,57 @@ Future<void> _ownerActions(
     case ReviewAction.delete:
       final confirmed = await DeleteReviewDialog.show(context, labels);
       if (confirmed != true || !context.mounted) return;
+      if (_isDeletingReview) return;
+      _isDeletingReview = true;
+      // Blocking barrier + spinner for the duration of the delete (Storage
+      // photos go first, sequentially — seconds on a slow network).
+      // PopScope(canPop: false): barrierDismissible only stops barrier taps,
+      // not the Android system Back action. The dialog's own context is
+      // retained so dismissal can only ever pop the spinner route itself,
+      // never an unrelated route underneath.
+      BuildContext? dialogContext;
+      showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) {
+          dialogContext = ctx;
+          return const PopScope(
+            canPop: false,
+            child: Center(
+              child: SizedBox(
+                width: 28,
+                height: 28,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          );
+        },
+      );
+      var failed = false;
       try {
         await ref.read(reviewRepositoryProvider).deleteReview(review.reviewId);
+      } catch (_) {
+        failed = true;
+      } finally {
+        _isDeletingReview = false;
+        // Pop the spinner barrier before any snackbar goes up.
+        final ctx = dialogContext;
+        if (ctx != null && ctx.mounted) {
+          Navigator.of(ctx).pop();
+        }
+      }
+      if (!failed) {
         ref.invalidate(userReviewsProvider);
         ref.invalidate(latestReviewsProvider);
-        if (context.mounted) {
-          showTabeminaSnackbar(context, message: labels.reviewDeleted);
-        }
-      } catch (_) {
-        if (context.mounted) {
-          showTabeminaSnackbar(context, message: labels.reviewDeleteFailed);
-        }
+      }
+      if (context.mounted) {
+        showTabeminaSnackbar(
+          context,
+          message: failed ? labels.reviewDeleteFailed : labels.reviewDeleted,
+        );
       }
   }
 }

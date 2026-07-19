@@ -547,7 +547,7 @@ Future<void> _showCooldownDialog(
         TextButton(
           onPressed: () => Navigator.of(ctx).pop(),
           child: Text(
-            'OK',
+            labels.confirm,
             style: TextStyle(
               fontFamily: 'Pretendard',
               fontWeight: FontWeight.w600,
