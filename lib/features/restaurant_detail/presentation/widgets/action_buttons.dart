@@ -8,7 +8,9 @@ import '../../../../presentation/providers/bookmark_providers.dart';
 import '../../../../shared/widgets/tab_scaffold.dart';
 import '../detail_labels.dart';
 
-/// Four-up action row under the info header: Review / Save / Route / Share.
+/// Three-up action row under the info header: Review / Save / Route.
+/// (Share was cut from v1 — the tile was dead; the v1.1 backlog revisits
+/// sharing.)
 ///
 /// The "Review" CTA is filled with a faint coral tint so it reads as the
 /// primary action — the rest are outline so they don't compete with the
@@ -23,14 +25,12 @@ class ActionButtons extends ConsumerWidget {
     required this.onReview,
     required this.onSave,
     required this.onRoute,
-    required this.onShare,
   });
 
   final String placeId;
   final VoidCallback onReview;
   final VoidCallback onSave;
   final VoidCallback onRoute;
-  final VoidCallback onShare;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -70,15 +70,6 @@ class ActionButtons extends ConsumerWidget {
               label: labels.route,
               color: c.textSecondary,
               onTap: onRoute,
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: _ActionButton(
-              icon: Icons.share_outlined,
-              label: labels.share,
-              color: c.textSecondary,
-              onTap: onShare,
             ),
           ),
         ],

@@ -10,6 +10,8 @@ class BookmarksLabels {
     required this.exploreNearby,
     required this.savedSnack,
     required this.removedSnack,
+    required this.bookmarkActionFailed,
+    required this.bookmarkQueuedOffline,
     required this.removeConfirmTitle,
     required this.removeConfirmBody,
     required this.removeYes,
@@ -30,6 +32,8 @@ class BookmarksLabels {
   final String exploreNearby;
   final String savedSnack;
   final String removedSnack;
+  final String bookmarkActionFailed;
+  final String bookmarkQueuedOffline;
   final String removeConfirmTitle;
   final String removeConfirmBody;
   final String removeYes;
@@ -53,6 +57,8 @@ class BookmarksLabels {
           exploreNearby: '近くを探す',
           savedSnack: 'ブックマークに保存しました',
           removedSnack: 'ブックマークから削除しました',
+          bookmarkActionFailed: 'ブックマークを変更できませんでした。もう一度お試しください。',
+          bookmarkQueuedOffline: 'オンライン復帰時に同期されます',
           removeConfirmTitle: 'ブックマークから削除しますか?',
           removeConfirmBody: 'このお店をブックマークから削除します。',
           removeYes: '削除',
@@ -74,6 +80,8 @@ class BookmarksLabels {
           exploreNearby: '근처 탐색',
           savedSnack: '북마크에 저장했습니다',
           removedSnack: '북마크에서 삭제했습니다',
+          bookmarkActionFailed: '북마크를 변경하지 못했습니다. 다시 시도해 주세요.',
+          bookmarkQueuedOffline: '온라인 연결 시 동기화됩니다',
           removeConfirmTitle: '북마크에서 삭제할까요?',
           removeConfirmBody: '이 식당을 북마크에서 제거합니다.',
           removeYes: '삭제',
@@ -96,6 +104,8 @@ class BookmarksLabels {
           exploreNearby: 'Explore nearby',
           savedSnack: 'Saved to bookmarks',
           removedSnack: 'Removed from bookmarks',
+          bookmarkActionFailed: "Couldn't update bookmark. Please try again.",
+          bookmarkQueuedOffline: "Will sync when you're back online",
           removeConfirmTitle: 'Remove from bookmarks?',
           removeConfirmBody:
               'This restaurant will be removed from your bookmarks.',

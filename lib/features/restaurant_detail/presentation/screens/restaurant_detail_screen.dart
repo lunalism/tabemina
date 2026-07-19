@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -144,7 +146,6 @@ class _DetailContent extends StatelessWidget {
             onReview: onWriteReview,
             onSave: onSaveToggle,
             onRoute: () => _openExternalUrl(detail.googleMapsUri),
-            onShare: () {},
           ),
         ),
         SliverToBoxAdapter(
@@ -247,7 +248,7 @@ class _LoadingScaffold extends StatelessWidget {
   }
 }
 
-/// 4-up action button row (Review / Save / Route / Share) skeleton row,
+/// 3-up action button row (Review / Save / Route) skeleton row,
 /// matched to the [ActionButtons] component's 56-tall rounded tiles.
 class _ActionButtonsSkeletonRow extends StatelessWidget {
   const _ActionButtonsSkeletonRow();
@@ -256,8 +257,6 @@ class _ActionButtonsSkeletonRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return const Row(
       children: [
-        Expanded(child: ShimmerBox(height: 44, borderRadius: 10)),
-        SizedBox(width: 8),
         Expanded(child: ShimmerBox(height: 44, borderRadius: 10)),
         SizedBox(width: 8),
         Expanded(child: ShimmerBox(height: 44, borderRadius: 10)),
@@ -356,63 +355,138 @@ class _ErrorView extends ConsumerWidget {
   }
 }
 
+/// In-flight guard for [_toggleBookmark]. File-scoped because the toggle is
+/// a top-level function shared by both bookmark buttons (action row + bottom
+/// bar) and only one detail screen is interactive at a time. Makes a rapid
+/// second tap a no-op instead of a duplicate write + duplicate analytics
+/// event; the buttons stay visually enabled (the window is short — a
+/// disabled flicker would read worse than absorbing the tap).
+bool _isTogglingBookmark = false;
+
+/// How long to wait for the backend to acknowledge a bookmark write before
+/// treating it as queued-offline. Firestore's set()/delete() futures resolve
+/// only on SERVER ack — offline they stay pending until reconnect, while the
+/// local cache applies the write immediately and re-emits the bookmarks
+/// snapshot (that re-emit is what flips the icon). Without this bound an
+/// offline toggle would show no feedback and hold [_isTogglingBookmark]
+/// until reconnect.
+///
+/// A timed-out write gets the "queued, will sync" toast and NO analytics
+/// event — events fire only on acknowledged writes. Offline bookmarks are
+/// therefore undercounted until a future batch adds queued-event handling;
+/// undercounting is preferred over counting unconfirmed writes.
+const _bookmarkAckGrace = Duration(seconds: 4);
+
 /// Toggle the restaurant's bookmark status through the active repo
 /// (Firestore when signed in, SharedPreferences when guest) and surface a
-/// localized snackbar so the user knows the tap registered.
+/// localized snackbar so the user knows the tap registered. Feedback fires
+/// AFTER the write settles: acked (or queued offline) → success snackbar,
+/// thrown → error snackbar with no analytics event.
 Future<void> _toggleBookmark(
   BuildContext context,
   WidgetRef ref,
   PlaceDetail detail,
 ) async {
+  if (_isTogglingBookmark) return;
+  _isTogglingBookmark = true;
+
   final repo = ref.read(bookmarkRepositoryProvider);
   final analytics = ref.read(analyticsEventsProvider);
   final lang = ref.read(appLocaleProvider).languageCode;
   final labels = BookmarksLabels.of(lang);
   final coral = AppColors.of(context).primary;
+  // Read once so the branch decision and the write can't disagree within one
+  // invocation — the provider is stream-derived and re-emits mid-flight.
   final alreadySaved = ref.read(isBookmarkedProvider(detail.id));
 
-  if (alreadySaved) {
-    showTabeminaSnackbar(
-      context,
-      message: labels.removedSnack,
-      icon: Icons.bookmark_outline_rounded,
-    );
-    await repo.removeBookmark(detail.id);
-    // Surface-where-the-action-happened: this toggle lives on the detail page.
-    analytics.bookmarkRemoved(
-      restaurantId: detail.id,
-      origin: AnalyticsOrigin.restaurantDetail,
-    );
-  } else {
-    showTabeminaSnackbar(
-      context,
-      message: labels.savedSnack,
-      icon: Icons.bookmark_rounded,
-      iconColor: coral,
-    );
-    await repo.addBookmark(BookmarkEntity(
-      placeId: detail.id,
-      placeName: detail.displayName,
-      placeAddress: detail.formattedAddress,
-      placeLat: detail.lat,
-      placeLng: detail.lng,
-      // Store the bare Places photo *resource name* (e.g. places/ID/photos/REF),
-      // NOT a full media URL — the display URL is rebuilt with the CURRENT key
-      // at render time, so a key rotation can't strand a dead ?key= in saved
-      // bookmarks. Field name stays 'placePhotoUrl' to avoid a schema migration.
-      placePhotoUrl: detail.photoNames.isNotEmpty
-          ? detail.photoNames.first
-          : null,
-      placeRating: detail.rating,
-      userRatingCount: detail.userRatingCount,
-      priceLevel: detail.priceLevel,
-      primaryType: detail.primaryType,
-      savedAt: DateTime.now(),
-    ));
-    analytics.bookmarkAdded(
-      restaurantId: detail.id,
-      origin: AnalyticsOrigin.restaurantDetail,
-    );
+  var acked = true;
+  try {
+    try {
+      if (alreadySaved) {
+        await repo.removeBookmark(detail.id).timeout(_bookmarkAckGrace);
+      } else {
+        await repo
+            .addBookmark(BookmarkEntity(
+              placeId: detail.id,
+              placeName: detail.displayName,
+              placeAddress: detail.formattedAddress,
+              placeLat: detail.lat,
+              placeLng: detail.lng,
+              // Store the bare Places photo *resource name* (e.g.
+              // places/ID/photos/REF), NOT a full media URL — the display URL
+              // is rebuilt with the CURRENT key at render time, so a key
+              // rotation can't strand a dead ?key= in saved bookmarks. Field
+              // name stays 'placePhotoUrl' to avoid a schema migration.
+              placePhotoUrl: detail.photoNames.isNotEmpty
+                  ? detail.photoNames.first
+                  : null,
+              placeRating: detail.rating,
+              userRatingCount: detail.userRatingCount,
+              priceLevel: detail.priceLevel,
+              primaryType: detail.primaryType,
+              savedAt: DateTime.now(),
+            ))
+            .timeout(_bookmarkAckGrace);
+      }
+    } on TimeoutException {
+      // No server ack inside the grace window — in practice: offline. The
+      // write already landed in the local cache (icon flipped) and syncs on
+      // reconnect; feedback below switches to the "queued" toast and the
+      // analytics event is skipped (see _bookmarkAckGrace).
+      acked = false;
+    }
+
+    if (context.mounted) {
+      if (!acked) {
+        // Queued-offline: keep the action's icon so the direction still
+        // reads (saved vs removed), but say "will sync" instead of done.
+        showTabeminaSnackbar(
+          context,
+          message: labels.bookmarkQueuedOffline,
+          icon: alreadySaved
+              ? Icons.bookmark_outline_rounded
+              : Icons.bookmark_rounded,
+          iconColor: alreadySaved ? null : coral,
+        );
+      } else if (alreadySaved) {
+        showTabeminaSnackbar(
+          context,
+          message: labels.removedSnack,
+          icon: Icons.bookmark_outline_rounded,
+        );
+      } else {
+        showTabeminaSnackbar(
+          context,
+          message: labels.savedSnack,
+          icon: Icons.bookmark_rounded,
+          iconColor: coral,
+        );
+      }
+    }
+
+    // Surface-where-the-action-happened: this toggle lives on the detail
+    // page. Fired only for ACKNOWLEDGED writes — a failed write no longer
+    // logs a phantom bookmark event, and a queued-offline write is not
+    // counted until a future batch adds queued-event handling.
+    if (acked) {
+      if (alreadySaved) {
+        analytics.bookmarkRemoved(
+          restaurantId: detail.id,
+          origin: AnalyticsOrigin.restaurantDetail,
+        );
+      } else {
+        analytics.bookmarkAdded(
+          restaurantId: detail.id,
+          origin: AnalyticsOrigin.restaurantDetail,
+        );
+      }
+    }
+  } catch (_) {
+    if (context.mounted) {
+      showTabeminaSnackbar(context, message: labels.bookmarkActionFailed);
+    }
+  } finally {
+    _isTogglingBookmark = false;
   }
 }
 

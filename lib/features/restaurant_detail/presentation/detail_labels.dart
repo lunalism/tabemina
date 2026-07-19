@@ -11,7 +11,6 @@ class DetailLabels {
     this._lang, {
     required this.save,
     required this.route,
-    required this.share,
     required this.openNow,
     required this.closed,
     required this.notFoundTitle,
@@ -26,9 +25,6 @@ class DetailLabels {
 
   /// Open the maps/route sheet.
   final String route;
-
-  /// Share the place.
-  final String share;
 
   /// Open-status chip when the place is currently open / closed.
   final String openNow;
@@ -68,7 +64,6 @@ class DetailLabels {
     'en',
     save: 'Save',
     route: 'Route',
-    share: 'Share',
     openNow: 'Open now',
     closed: 'Closed',
     notFoundTitle: 'This restaurant is no longer available',
@@ -80,7 +75,6 @@ class DetailLabels {
     'ja',
     save: '保存',
     route: '経路',
-    share: 'シェア',
     openNow: '営業中',
     closed: '閉店',
     notFoundTitle: 'このお店は表示できません',
@@ -92,7 +86,6 @@ class DetailLabels {
     'ko',
     save: '저장',
     route: '길찾기',
-    share: '공유',
     openNow: '영업 중',
     closed: '영업 종료',
     notFoundTitle: '더 이상 확인할 수 없는 가게예요',
