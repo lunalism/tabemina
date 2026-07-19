@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/providers/app_locale_provider.dart';
+import '../../../../shared/widgets/initials_avatar.dart';
 import '../../data/models/place_detail.dart';
 
 /// SECONDARY "Google Maps reviews" section on the detail page — live Google
@@ -175,9 +176,9 @@ class _GoogleReviewCardState extends State<_GoogleReviewCard> {
 
     final header = Row(
       children: [
-        _Avatar(
+        InitialsAvatar(
           photoUrl: review.authorPhotoUri,
-          fallback: _initialOf(review.authorName),
+          fallback: initialsOf(review.authorName),
         ),
         const SizedBox(width: AppConstants.spaceSm),
         Expanded(
@@ -302,41 +303,6 @@ class _GoogleReviewCardState extends State<_GoogleReviewCard> {
     );
   }
 
-  String _initialOf(String name) {
-    final t = name.trim();
-    if (t.isEmpty) return '?';
-    return t.characters.first.toUpperCase();
-  }
-}
-
-class _Avatar extends StatelessWidget {
-  const _Avatar({required this.photoUrl, required this.fallback});
-
-  final String? photoUrl;
-  final String fallback;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = AppColors.of(context);
-    final hasPhoto = photoUrl != null && photoUrl!.isNotEmpty;
-    return CircleAvatar(
-      radius: 14,
-      backgroundColor: c.bgSkeleton,
-      backgroundImage: hasPhoto ? NetworkImage(photoUrl!) : null,
-      child: hasPhoto
-          ? null
-          : Text(
-              fallback,
-              style: TextStyle(
-                fontFamily: 'Pretendard',
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-                color: c.textPrimary,
-                height: 1.0,
-              ),
-            ),
-    );
-  }
 }
 
 /// Localized copy (KO / JA / EN). The brand tokens "Google Maps" / "Google"

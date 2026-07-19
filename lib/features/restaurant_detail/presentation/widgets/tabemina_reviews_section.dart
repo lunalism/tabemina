@@ -11,6 +11,7 @@ import '../../../../presentation/providers/review_providers.dart';
 import '../../../../shared/widgets/app_error_kind.dart';
 import '../../../../shared/widgets/app_state_labels.dart';
 import '../../../../shared/widgets/empty_state_view.dart';
+import '../../../../shared/widgets/initials_avatar.dart';
 import '../../../../shared/widgets/network_image_fade.dart';
 import '../../../../shared/widgets/shimmer_box.dart';
 
@@ -168,9 +169,9 @@ class TabeminaReviewCard extends ConsumerWidget {
           children: [
             Row(
               children: [
-                _Avatar(
+                InitialsAvatar(
                   photoUrl: deleted ? null : review.userPhotoUrl,
-                  fallback: deleted ? '?' : _initialsOf(review.userName),
+                  fallback: deleted ? '?' : initialsOf(review.userName),
                 ),
                 const SizedBox(width: AppConstants.spaceSm),
                 Expanded(
@@ -273,44 +274,6 @@ class TabeminaReviewCard extends ConsumerWidget {
     );
   }
 
-  String _initialsOf(String name) {
-    if (name.isEmpty) return '?';
-    final parts = name.trim().split(RegExp(r'\s+'));
-    if (parts.length == 1) return parts.first.characters.first.toUpperCase();
-    return (parts.first.characters.first + parts.last.characters.first)
-        .toUpperCase();
-  }
-}
-
-class _Avatar extends StatelessWidget {
-  const _Avatar({required this.photoUrl, required this.fallback});
-
-  final String? photoUrl;
-  final String fallback;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = AppColors.of(context);
-    return CircleAvatar(
-      radius: 14,
-      backgroundColor: c.bgSkeleton,
-      backgroundImage: (photoUrl != null && photoUrl!.isNotEmpty)
-          ? NetworkImage(photoUrl!)
-          : null,
-      child: (photoUrl == null || photoUrl!.isEmpty)
-          ? Text(
-              fallback,
-              style: TextStyle(
-                fontFamily: 'Pretendard',
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-                color: c.textPrimary,
-                height: 1.0,
-              ),
-            )
-          : null,
-    );
-  }
 }
 
 class _TagChip extends StatelessWidget {

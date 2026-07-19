@@ -13,6 +13,7 @@ import '../../../../features/restaurant_detail/presentation/widgets/tabemina_rev
     show formatRelative;
 import '../../../../presentation/providers/review_providers.dart';
 import '../../../../shared/widgets/app_state_labels.dart';
+import '../../../../shared/widgets/initials_avatar.dart';
 import '../../../../shared/widgets/network_image_fade.dart';
 import '../../../../shared/widgets/shimmer_box.dart';
 
@@ -155,9 +156,9 @@ class _RealReviewCard extends ConsumerWidget {
                 children: [
                   Row(
                     children: [
-                      _Avatar(
+                      InitialsAvatar(
                         photoUrl: deleted ? null : review.userPhotoUrl,
-                        fallback: deleted ? '?' : _initialsOf(review.userName),
+                        fallback: deleted ? '?' : initialsOf(review.userName),
                       ),
                       const SizedBox(width: AppConstants.spaceSm),
                       Expanded(
@@ -272,64 +273,6 @@ class _RealReviewCard extends ConsumerWidget {
     return nl < 0 ? t : t.substring(0, nl);
   }
 
-  String _initialsOf(String name) {
-    if (name.isEmpty) return '?';
-    final parts = name.trim().split(RegExp(r'\s+'));
-    if (parts.length == 1) return parts.first.characters.first.toUpperCase();
-    return (parts.first.characters.first + parts.last.characters.first)
-        .toUpperCase();
-  }
-}
-
-class _Avatar extends StatefulWidget {
-  const _Avatar({required this.photoUrl, required this.fallback});
-
-  final String? photoUrl;
-  final String fallback;
-
-  @override
-  State<_Avatar> createState() => _AvatarState();
-}
-
-class _AvatarState extends State<_Avatar> {
-  /// Set when the network image fails to load (e.g. a stale googleusercontent
-  /// URL 404s) so the initials fallback replaces the blank circle.
-  bool _failed = false;
-
-  @override
-  void didUpdateWidget(_Avatar oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.photoUrl != oldWidget.photoUrl) _failed = false;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final c = AppColors.of(context);
-    final url = widget.photoUrl;
-    final showImage = !_failed && url != null && url.isNotEmpty;
-    return CircleAvatar(
-      radius: 14,
-      backgroundColor: c.bgSkeleton,
-      backgroundImage: showImage ? NetworkImage(url) : null,
-      onBackgroundImageError: showImage
-          ? (_, _) {
-              if (mounted) setState(() => _failed = true);
-            }
-          : null,
-      child: showImage
-          ? null
-          : Text(
-              widget.fallback,
-              style: TextStyle(
-                fontFamily: 'Pretendard',
-                fontSize: 11,
-                fontWeight: FontWeight.w500,
-                color: c.textPrimary,
-                height: 1.0,
-              ),
-            ),
-    );
-  }
 }
 
 class _LoadingList extends StatelessWidget {
