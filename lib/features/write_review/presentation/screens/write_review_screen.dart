@@ -437,9 +437,15 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
     //
     // PopScope enforces this for the swipe and hardware-back paths, but the
     // top-bar arrow calls straight in here — so the block has to live in the
-    // method itself, not only in the arrow's enabled state. Post-Commit-1
-    // `_posting` always clears within ~11.5s (10s write timeout + the 1.5s
-    // success overlay), so this is a bounded block, not a new trap.
+    // method itself, not only in the arrow's enabled state.
+    //
+    // Bounded, not a new trap — every await in the `_posting` window carries a
+    // 10s cap. Worst cases, both measured against the shipped code:
+    //   create, retry branch: probeReviewWrite 10s + submitReview 10s
+    //                         + success overlay 1.5s = 21.5s
+    //   edit:                 aggregate Storage removals 10s
+    //                         + doc.update 10s = 20s (no overlay on this path)
+    // The create FIRST attempt skips the probe, so it caps at 11.5s.
     if (_posting || _closing) return;
 
     // Edit mode keeps the discard-confirmation: there's no auto-save/draft to
@@ -590,7 +596,7 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
     // Retry is very likely tapped after we're gone. `_canPost` alone wouldn't
     // catch it: the photo list and the form fields survive disposal, so it can
     // still evaluate true, and everything after it would then touch `ref` and
-    // `context` on a dead State. (Pre-existing on the uploadFailed path too —
+    // `context` on a dead State. (Pre-existing on the write-failure path too —
     // back out during its 4s window and Retry hit the same edge.)
     if (!mounted) return;
     if (!_canPost) return;
@@ -762,7 +768,25 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
           // RESTORED draft, where this session has not itself submitted yet and
           // the flag would otherwise still be false.)
           _submitInitiated = true;
-          final state = await repo.probeReviewWrite(_pendingReviewId!);
+          final ReviewWriteState state;
+          try {
+            state = await repo.probeReviewWrite(_pendingReviewId!);
+          } on TimeoutException {
+            // The PROBE timed out, so we learned nothing — and crucially,
+            // nothing was handed to Firestore on THIS attempt. Letting it fall
+            // through to the shared queued handler would promise a publish with
+            // possibly no mutation behind it: a restored draft carries a review
+            // id even when the earlier write was REJECTED outright (rejection
+            // leaves no queue entry), and the user would leave believing a
+            // review is coming that never arrives.
+            //
+            // Treat it as a failed attempt instead. The user stays on the form
+            // with Retry, which re-runs the probe — and `_pendingReviewId`
+            // survives, so a genuinely committed prior write is still adopted
+            // rather than duplicated.
+            _showWriteFailed(l);
+            return; // `finally` still clears `_posting`.
+          }
           switch (state) {
             case ReviewWriteState.committed:
               // Prior write landed and the SERVER confirmed it (lost ack).
@@ -792,13 +816,17 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
         }
       }
     } on TimeoutException {
-      // The write was handed to Firestore but no server ack arrived inside
-      // `_submitTimeout`. The outcome is UNKNOWN, not failed — it may still
-      // commit from the offline queue.
+      // Reaching HERE now means one thing only: a doc write was handed to
+      // Firestore and no server ack arrived inside `_submitTimeout`. The probe
+      // is the sole other timeout source on this path and it returns before
+      // this handler (see above), so the "queued" framing below is always
+      // earned — set()/update() enqueue locally the moment they're called, which
+      // is what makes the write genuinely pending rather than merely unknown.
+      // Keep that invariant if another awaited call is added to the try block.
       //
       // `_pendingReviewId` is left intact (it is only ever cleared on success),
-      // so tapping Retry takes the probeReviewWrite dedup branch above and
-      // adopts the prior write only if the SERVER confirmed it.
+      // so a later attempt takes the probeReviewWrite dedup branch and adopts
+      // the prior write only if the SERVER confirmed it.
       _showQueuedState(l);
     } catch (_) {
       // Submit failed mid-flight (e.g. the Firestore write dropped after the
@@ -806,19 +834,37 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
       // gates on all uploads being ready, so no partial/orphaned doc is left —
       // the doc write is the last step and it threw. Preserve the draft, stay on
       // the form, and offer a retry.
-      if (mounted) {
-        showTabeminaBlockedSnackbar(
-          context,
-          message: l.uploadFailed,
-          // "Draft saved" only applies to new reviews (see above).
-          subtext: _isEdit ? null : l.offlineDraftSaved,
-          retryLabel: l.retry,
-          onRetry: _post,
-        );
-      }
+      _showWriteFailed(l);
     } finally {
       if (mounted) setState(() => _posting = false);
     }
+  }
+
+  /// The attempt did not go through and nothing is outstanding from it.
+  ///
+  /// Shared by the genuine-throw path and the probe timeout. Unlike
+  /// [_showQueuedState] this KEEPS the user on the form and offers Retry,
+  /// because retrying is the useful action here — there is no queued write to
+  /// wait on.
+  void _showWriteFailed(_Labels l) {
+    if (!mounted) return;
+    showTabeminaBlockedSnackbar(
+      context,
+      // The DOC WRITE failed — not the photo upload, which `_canPost` already
+      // gates on having completed. The old copy here said the UPLOAD failed,
+      // sending the user off to re-check photos for a problem that was never
+      // there.
+      message: _isEdit ? l.reviewUpdateFailed : l.postFailed,
+      // "Draft saved" only applies to new reviews; edits aren't persisted.
+      subtext: _isEdit ? null : l.offlineDraftSaved,
+      retryLabel: l.retry,
+      onRetry: _post,
+      // Not a connectivity problem — the offline gate passed and the queued
+      // case is handled separately, so reaching here means the write was
+      // actively rejected, dropped, or never confirmable. A wifi-off glyph
+      // would misdirect.
+      icon: Icons.error_outline_rounded,
+    );
   }
 
   /// Refresh everything downstream that has to reflect a review write.
@@ -879,22 +925,32 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
     // Gate the next write even though this one is only queued — see
     // [_invalidateReviewConsumers].
     _invalidateReviewConsumers(_restaurant!.placeId);
+    // The NEUTRAL surface, not the terracotta blocked one. Latency compensation
+    // means the queued review is already visible in the local cache, so after
+    // the pop the user is looking at their own review on the detail screen — an
+    // error-red pill with a no-connection glyph on top of that contradicts what
+    // is on screen, and the rational response to the contradiction is to write
+    // the review a second time.
+    //
     // Shown on the ROOT ScaffoldMessenger, so it deliberately survives the pop
     // below and lands on the destination screen. That is the only signal the
     // user gets, which is why we don't clearSnackBars() the way the success
     // path does.
     //
-    // NO Retry action. Once this path pops, `_post` would run against a
-    // disposed State — but the deeper reason is semantic: the write has not
-    // FAILED, it is queued, and Firestore will deliver it without our help.
-    // "Retry" names an action that does not exist here, and re-submitting the
-    // same id would at best be a no-op. The action stayed while this state kept
-    // the user on the form; making the state terminal removes its meaning too.
-    showTabeminaBlockedSnackbar(
+    // NO action. Once this path pops, `_post` would run against a disposed
+    // State — but the deeper reason is semantic: the write has not FAILED, it is
+    // queued, and Firestore will deliver it without our help. "Retry" names an
+    // action that does not exist here.
+    //
+    // schedule_rounded over cloud_done_rounded: the checkmark in the latter
+    // asserts completion, which is the one claim this state must not make.
+    // A clock reads as "pending", matching copy that promises a later publish.
+    showTabeminaSnackbar(
       context,
-      message: _isEdit ? l.updateTimeout : l.submitTimeout,
-      // Only new reviews have a B-1 draft; edits aren't persisted.
-      subtext: _isEdit ? null : l.submitTimeoutRetrySafe,
+      message: _isEdit ? l.updateQueued : l.submitQueued,
+      icon: Icons.schedule_rounded,
+      // 4s, not the 2s default — the copy is a full sentence.
+      duration: const Duration(seconds: 4),
     );
     context.pop();
   }
@@ -1247,11 +1303,9 @@ class _Labels {
     required this.daysAgo,
     required this.offlineCheckConnection,
     required this.offlineDraftSaved,
-    required this.uploadFailed,
     required this.retry,
-    required this.submitTimeout,
-    required this.updateTimeout,
-    required this.submitTimeoutRetrySafe,
+    required this.submitQueued,
+    required this.updateQueued,
   });
 
   final String screenTitle;
@@ -1315,17 +1369,21 @@ class _Labels {
   // B-3-3 offline/upload-failure snackbar copy.
   final String offlineCheckConnection;
   final String offlineDraftSaved;
-  final String uploadFailed;
   final String retry;
 
-  // C-4 submit-timeout copy. Distinct from [uploadFailed] on purpose: a
-  // timeout means the write's outcome is UNKNOWN (it may still commit from the
-  // offline queue), so the wording must not claim failure — and the subtext
-  // promises that Retry is safe, which the probeReviewWrite dedup probe backs
-  // up — it adopts a prior write ONLY when the server confirmed it.
-  final String submitTimeout;
-  final String updateTimeout;
-  final String submitTimeoutRetrySafe;
+  // C-4 queued-write copy, shown on the NEUTRAL snackbar surface.
+  //
+  // Not "Timeout" — two different paths reach these strings and only one of
+  // them involves a timeout: the submit ack expiring, and the retry probe
+  // finding an earlier write still sitting in Firestore's local queue. The user
+  // has no interest in which, and the copy is if anything more literally true
+  // on the probe path. One string, two triggers.
+  //
+  // Frames a positive bounded outcome: the content is safely handed off and
+  // will publish on reconnect. It must claim neither failure NOR publication —
+  // the write can still be rejected, which is why the draft is kept.
+  final String submitQueued;
+  final String updateQueued;
 
   static _Labels of(String code) {
     switch (code) {
@@ -1407,11 +1465,9 @@ class _Labels {
     daysAgo: (n) => n == 1 ? '1 day ago' : '$n days ago',
     offlineCheckConnection: 'Check your connection',
     offlineDraftSaved: 'Your draft is saved',
-    uploadFailed: 'Upload failed',
     retry: 'Retry',
-    submitTimeout: "Couldn't confirm your review",
-    updateTimeout: "Couldn't confirm your changes",
-    submitTimeoutRetrySafe: "Your draft is saved — Retry won't post twice",
+    submitQueued: "Saved — your review will post once you're back online",
+    updateQueued: "Saved — your changes will apply once you're back online",
   );
 
   static final _ja = _Labels._(
@@ -1477,11 +1533,9 @@ class _Labels {
     daysAgo: (n) => '$n日前',
     offlineCheckConnection: '接続を確認してください',
     offlineDraftSaved: '入力内容は保存されました',
-    uploadFailed: 'アップロードに失敗しました',
     retry: '再試行',
-    submitTimeout: 'レビューの投稿を確認できませんでした',
-    updateTimeout: '変更の保存を確認できませんでした',
-    submitTimeoutRetrySafe: '入力内容は保存済み。再試行しても重複しません',
+    submitQueued: '保存しました。オンラインに戻ると投稿されます',
+    updateQueued: '保存しました。オンラインに戻ると反映されます',
   );
 
   static final _ko = _Labels._(
@@ -1547,10 +1601,8 @@ class _Labels {
     daysAgo: (n) => '$n일 전',
     offlineCheckConnection: '연결을 확인해 주세요',
     offlineDraftSaved: '작성한 내용은 저장됐어요',
-    uploadFailed: '업로드에 실패했어요',
     retry: '재시도',
-    submitTimeout: '리뷰 게시를 확인하지 못했어요',
-    updateTimeout: '수정 내용을 확인하지 못했어요',
-    submitTimeoutRetrySafe: '작성한 내용은 저장됐어요. 재시도해도 중복되지 않아요',
+    submitQueued: '저장됐어요. 연결되면 게시돼요',
+    updateQueued: '저장됐어요. 연결되면 반영돼요',
   );
 }

@@ -45,6 +45,12 @@ void showTabeminaSnackbar(
           bottom: AppConstants.spaceSm,
         ),
         duration: duration,
+        // This surface never carries a SnackBarAction, so Flutter would derive
+        // persist = false anyway. Stated explicitly so the invariant survives
+        // anyone later adding an action here — the derived-true case fires its
+        // timeout without hiding the bar, which is the bug the blocked variant
+        // below documents.
+        persist: false,
         content: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -78,6 +84,17 @@ void showTabeminaSnackbar(
 /// terracotta pill with [message], optional [subtext], and an optional
 /// [retryLabel]/[onRetry] action. Auto-dismisses after [duration] (~4s) and is
 /// swipe-dismissible. Tapping retry dismisses the snackbar and calls [onRetry].
+///
+/// [icon] defaults to the no-connection glyph because that is what most blocked
+/// actions are. Failures that are NOT network-shaped — a rejected write, a
+/// permission error — should pass something honest instead
+/// (e.g. `Icons.error_outline_rounded`); a wifi-off glyph on a non-network
+/// failure sends the user to check their signal for no reason.
+///
+/// This surface is for genuine failures and hard blocks only. An outcome that
+/// merely isn't confirmed yet belongs on [showTabeminaSnackbar] — terracotta
+/// reads as "something went wrong", and pairing that with a message saying
+/// otherwise just makes the two contradict each other.
 void showTabeminaBlockedSnackbar(
   BuildContext context, {
   required String message,
@@ -85,6 +102,7 @@ void showTabeminaBlockedSnackbar(
   VoidCallback? onRetry,
   String? retryLabel,
   Duration duration = const Duration(seconds: 4),
+  IconData icon = Icons.wifi_off_rounded,
 }) {
   final messenger = ScaffoldMessenger.maybeOf(context);
   if (messenger == null) return;
@@ -113,7 +131,7 @@ void showTabeminaBlockedSnackbar(
         dismissDirection: DismissDirection.horizontal,
         content: Row(
           children: [
-            Icon(Icons.wifi_off_rounded, size: 18, color: c.snackbarBlockedIcon),
+            Icon(icon, size: 18, color: c.snackbarBlockedIcon),
             const SizedBox(width: 10),
             Expanded(
               child: Column(
