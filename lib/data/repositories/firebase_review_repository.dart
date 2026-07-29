@@ -31,6 +31,23 @@ class FirebaseReviewRepository implements ReviewRepository {
   CollectionReference<Map<String, dynamic>> get _reviews =>
       _firestore.collection('reviews');
 
+  /// Bound on every network call the write-review submit path awaits behind a
+  /// blocking spinner.
+  ///
+  /// A Firestore write future resolves ONLY on server ack, so offline — or,
+  /// worse, online-but-unreachable (captive portal, backend outage), which the
+  /// caller's connectivity pre-check cannot detect — it never completes at all.
+  /// Left unbounded that pinned the write screen's Post spinner up forever with
+  /// back navigation disabled, i.e. an unrecoverable screen. 10s matches
+  /// [_storageDeleteTimeout] and the app-wide rule that no await tied to a
+  /// spinner is unbounded.
+  ///
+  /// A [TimeoutException] here means the outcome is UNKNOWN, not failed: the
+  /// write may still commit later from the offline queue. Callers must treat it
+  /// as ambiguous and re-probe with [reviewExists] before writing again — never
+  /// mint a fresh review id on it.
+  static const Duration _submitTimeout = Duration(seconds: 10);
+
   @override
   String newReviewId() => _reviews.doc().id;
 
@@ -38,7 +55,11 @@ class FirebaseReviewRepository implements ReviewRepository {
   Future<bool> reviewExists(String reviewId) async {
     // Read is public per the Firestore rules, so this probe is always allowed
     // — unlike a re-set(), which would hit the owner-only UPDATE path.
-    final snap = await _reviews.doc(reviewId).get();
+    //
+    // Bounded: this runs on the RETRY path, i.e. precisely when the network has
+    // already misbehaved once. Offline the default serverAndCache get() falls
+    // back to the cache and resolves, but online-unreachable it would hang.
+    final snap = await _reviews.doc(reviewId).get().timeout(_submitTimeout);
     return snap.exists;
   }
 
@@ -78,7 +99,10 @@ class FirebaseReviewRepository implements ReviewRepository {
       'createdAt': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
     };
-    await docRef.set(data);
+    // Bounded — see [_submitTimeout]. On timeout the doc MAY still commit from
+    // the offline queue, so the caller keeps its stable review id and re-probes
+    // with [reviewExists] on the next attempt rather than creating a duplicate.
+    await docRef.set(data).timeout(_submitTimeout);
 
     return ReviewEntity(
       reviewId: reviewId,
@@ -118,21 +142,32 @@ class FirebaseReviewRepository implements ReviewRepository {
     // to refFromURL for photos that predate path tracking, where the path
     // isn't known. Both are guarded — a removed photo carried in both lists
     // simply 404s on the second attempt, which we ignore.
-    for (final path in removedStoragePaths) {
+    //
+    // Issued CONCURRENTLY under ONE [_submitTimeout] budget rather than awaited
+    // in sequence: this runs behind the edit screen's Post spinner, and a
+    // stalled network on a 5-photo edit would otherwise stack up to 5 separate
+    // timeouts before the doc write even started.
+    final removals = <Future<void>>[
+      for (final path in removedStoragePaths)
+        _deleteQuietly(() => _storage.ref(path).delete()),
+      for (final url in removedPhotoUrls)
+        _deleteQuietly(() => _storage.refFromURL(url).delete()),
+    ];
+    if (removals.isNotEmpty) {
       try {
-        await _storage.ref(path).delete();
-      } on FirebaseException {
-        // Already gone / no permission — ignore.
-      }
-    }
-    for (final url in removedPhotoUrls) {
-      try {
-        await _storage.refFromURL(url).delete();
-      } on FirebaseException {
-        // Already gone (path delete above handled it) / no permission.
+        await Future.wait(removals).timeout(_submitTimeout);
+      } on TimeoutException {
+        // Storage is unreachable. The edit itself must still save — an orphan
+        // blob is invisible and sweepable, a blocked edit is neither. The
+        // queued deletes still land on reconnect.
+        debugPrint('updateReview: Storage removals still pending after '
+            '$_submitTimeout; saving the edit anyway.');
       }
     }
 
+    // Bounded — see [_submitTimeout]. Unlike the removals above this one
+    // PROPAGATES: it is the write the user is waiting on, and the screen needs
+    // the timeout to release its spinner.
     await _reviews.doc(review.reviewId).update({
       'rating': review.rating,
       'comment': review.comment,
@@ -141,7 +176,7 @@ class FirebaseReviewRepository implements ReviewRepository {
       'photoUrls': photoUrls,
       'photoStoragePaths': photoStoragePaths,
       'updatedAt': FieldValue.serverTimestamp(),
-    });
+    }).timeout(_submitTimeout);
 
     return ReviewEntity(
       reviewId: review.reviewId,
@@ -377,6 +412,22 @@ class FirebaseReviewRepository implements ReviewRepository {
       });
       return ReportOutcome.submitted;
     });
+  }
+
+  /// Run one best-effort Storage delete, swallowing every failure.
+  ///
+  /// Takes a THUNK rather than a Future so a synchronous throw from
+  /// [FirebaseStorage.refFromURL] (it validates the URL eagerly) is caught here
+  /// too — building the future list inline would let that escape past the
+  /// surrounding guard.
+  Future<void> _deleteQuietly(Future<void> Function() op) async {
+    try {
+      await op();
+    } catch (e) {
+      // Already gone / no permission / unparseable URL — all acceptable. The
+      // caller's timeout covers the still-hanging case separately.
+      debugPrint('updateReview: best-effort photo delete failed: $e');
+    }
   }
 
   /// Map docs to entities and drop the hidden ones. Done in Dart — NOT as a

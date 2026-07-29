@@ -115,6 +115,21 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
   // the first attempt threw before reaching its analytics line.
   bool _analyticsFired = false;
 
+  /// Flips true the instant a doc write is handed to Firestore, and NEVER back.
+  ///
+  /// A handed-off write cannot be recalled: it may have committed already, or
+  /// it may commit later from the offline queue, and a [TimeoutException] tells
+  /// us nothing either way. From that moment on, deleting this session's
+  /// uploaded photos would publish a review whose photoUrls 404 — so the
+  /// abandon-cleanup is permanently forbidden (see `_cleanupUploads`).
+  ///
+  /// Deliberately NOT reset on a failed attempt. Distinguishing "definitely
+  /// never landed" from "unknown" is not reliably possible client-side, and the
+  /// two outcomes are not symmetric: a leaked blob is invisible and swept up
+  /// server-side, whereas a review with dead image URLs is permanent, public,
+  /// and unrepairable. Fail toward leaking.
+  bool _submitInitiated = false;
+
   // Draft auto-save: discrete actions (rating/tags/photos/restaurant) save
   // immediately; comment typing is debounced 2s after the last keystroke.
   // Edit mode bypasses the whole draft system.
@@ -619,6 +634,9 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
           createdAt: original.createdAt,
           updatedAt: original.updatedAt,
         );
+        // Point of no return — see [_submitInitiated]. Set BEFORE the await so
+        // it holds even if the write times out or throws.
+        _submitInitiated = true;
         await repo.updateReview(
           updated,
           photoUrls,
@@ -674,6 +692,8 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
           final id = repo.newReviewId();
           _pendingReviewId = id;
           _saveDraftNow();
+          // Point of no return — see [_submitInitiated].
+          _submitInitiated = true;
           await repo.submitReview(id, draft, photoUrls, photoStoragePaths);
           await _onSubmitSuccess(l, moodTags, photoUrls.length);
         } else {
@@ -694,11 +714,32 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
             await _onSubmitSuccess(l, moodTags, photoUrls.length);
           } else {
             // Prior write never landed — create at the same stable id.
+            _submitInitiated = true;
             await repo.submitReview(
                 _pendingReviewId!, draft, photoUrls, photoStoragePaths);
             await _onSubmitSuccess(l, moodTags, photoUrls.length);
           }
         }
+      }
+    } on TimeoutException {
+      // The write was handed to Firestore but no server ack arrived inside
+      // `_submitTimeout`. The outcome is UNKNOWN, not failed — it may still
+      // commit from the offline queue — so this deliberately reads as
+      // "couldn't confirm" rather than "couldn't post".
+      //
+      // `_pendingReviewId` is left intact (it is only ever cleared on success),
+      // so tapping Retry takes the reviewExists dedup-probe branch above and
+      // adopts the prior write if it did land. That is what makes retry safe to
+      // promise in the copy.
+      if (mounted) {
+        showTabeminaBlockedSnackbar(
+          context,
+          message: _isEdit ? l.updateTimeout : l.submitTimeout,
+          // Only new reviews have a B-1 draft; edits aren't persisted.
+          subtext: _isEdit ? null : l.submitTimeoutRetrySafe,
+          retryLabel: l.retry,
+          onRetry: _post,
+        );
       }
     } catch (_) {
       // Submit failed mid-flight (e.g. the Firestore write dropped after the
@@ -1064,6 +1105,9 @@ class _Labels {
     required this.offlineDraftSaved,
     required this.uploadFailed,
     required this.retry,
+    required this.submitTimeout,
+    required this.updateTimeout,
+    required this.submitTimeoutRetrySafe,
   });
 
   final String screenTitle;
@@ -1129,6 +1173,14 @@ class _Labels {
   final String offlineDraftSaved;
   final String uploadFailed;
   final String retry;
+
+  // C-4 submit-timeout copy. Distinct from [uploadFailed] on purpose: a
+  // timeout means the write's outcome is UNKNOWN (it may still commit from the
+  // offline queue), so the wording must not claim failure — and the subtext
+  // promises that Retry is safe, which the reviewExists dedup probe backs up.
+  final String submitTimeout;
+  final String updateTimeout;
+  final String submitTimeoutRetrySafe;
 
   static _Labels of(String code) {
     switch (code) {
@@ -1212,6 +1264,9 @@ class _Labels {
     offlineDraftSaved: 'Your draft is saved',
     uploadFailed: 'Upload failed',
     retry: 'Retry',
+    submitTimeout: "Couldn't confirm your review",
+    updateTimeout: "Couldn't confirm your changes",
+    submitTimeoutRetrySafe: "Your draft is saved — Retry won't post twice",
   );
 
   static final _ja = _Labels._(
@@ -1279,6 +1334,9 @@ class _Labels {
     offlineDraftSaved: '入力内容は保存されました',
     uploadFailed: 'アップロードに失敗しました',
     retry: '再試行',
+    submitTimeout: 'レビューの投稿を確認できませんでした',
+    updateTimeout: '変更の保存を確認できませんでした',
+    submitTimeoutRetrySafe: '入力内容は保存済み。再試行しても重複しません',
   );
 
   static final _ko = _Labels._(
@@ -1346,5 +1404,8 @@ class _Labels {
     offlineDraftSaved: '작성한 내용은 저장됐어요',
     uploadFailed: '업로드에 실패했어요',
     retry: '재시도',
+    submitTimeout: '리뷰 게시를 확인하지 못했어요',
+    updateTimeout: '수정 내용을 확인하지 못했어요',
+    submitTimeoutRetrySafe: '작성한 내용은 저장됐어요. 재시도해도 중복되지 않아요',
   );
 }
