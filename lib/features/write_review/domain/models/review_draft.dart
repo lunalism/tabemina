@@ -75,7 +75,7 @@ class ReviewDraft {
 
   /// The stable review document id minted on the FIRST submit attempt and
   /// persisted here so a leave-and-resubmit reuses it — letting the resubmit
-  /// dedup-probe ([ReviewRepository.reviewExists]) detect a prior lost-ack
+  /// dedup-probe ([ReviewRepository.probeReviewWrite]) detect a prior lost-ack
   /// write instead of creating a duplicate. Null until the first Post tap;
   /// old drafts saved before this field existed decode to null.
   final String? reviewId;

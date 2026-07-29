@@ -746,46 +746,52 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
           // carried a prior attempt's id): the prior write may have committed
           // before its ack was lost. Probe FIRST — a re-set() of an existing
           // doc hits the owner-only UPDATE rule and is rejected.
-          final alreadyCommitted = await repo.reviewExists(_pendingReviewId!);
-          if (alreadyCommitted) {
-            // Prior write landed (lost ack). Treat as success — do NOT write
-            // again. _onSubmitSuccess fires the analytics the first attempt
-            // never reached.
-            //
-            // KNOWN ACCEPTED EDGE: if the user EDITED the form during the
-            // lost-ack window then retried, this treats it as success and the
-            // originally-committed version stays live (local edits are not
-            // reconciled). Extremely narrow; accepted for now.
-            await _onSubmitSuccess(l, moodTags, photoUrls.length);
-          } else {
-            // Prior write never landed — create at the same stable id.
-            _submitInitiated = true;
-            await repo.submitReview(
-                _pendingReviewId!, draft, photoUrls, photoStoragePaths);
-            await _onSubmitSuccess(l, moodTags, photoUrls.length);
+          //
+          // A prior attempt exists, so SOMETHING may be outstanding against
+          // this id in all three branches below — committed, queued, or about
+          // to be written. Lock the abandon-cleanup now so backing out can't
+          // delete the photos out from under any of them. (Matters most for a
+          // RESTORED draft, where this session has not itself submitted yet and
+          // the flag would otherwise still be false.)
+          _submitInitiated = true;
+          final state = await repo.probeReviewWrite(_pendingReviewId!);
+          switch (state) {
+            case ReviewWriteState.committed:
+              // Prior write landed and the SERVER confirmed it (lost ack).
+              // Treat as success — do NOT write again. _onSubmitSuccess fires
+              // the analytics the first attempt never reached.
+              //
+              // KNOWN ACCEPTED EDGE: if the user EDITED the form during the
+              // lost-ack window then retried, this treats it as success and the
+              // originally-committed version stays live (local edits are not
+              // reconciled). Extremely narrow; accepted for now.
+              await _onSubmitSuccess(l, moodTags, photoUrls.length);
+            case ReviewWriteState.pending:
+              // The doc is visible ONLY because our own timed-out set() is
+              // still sitting in Firestore's local mutation queue. The backend
+              // has not accepted it and still may reject it, so this is not a
+              // success: no clearDraft, no reviewSubmitted, no navigation. The
+              // queued write will deliver itself — re-writing the same id would
+              // be idempotent but pointless. Surface the same queued state the
+              // submit timeout does, and keep the draft as the recovery path.
+              _showQueuedState(l);
+            case ReviewWriteState.absent:
+              // Prior write never landed — create at the same stable id.
+              await repo.submitReview(
+                  _pendingReviewId!, draft, photoUrls, photoStoragePaths);
+              await _onSubmitSuccess(l, moodTags, photoUrls.length);
           }
         }
       }
     } on TimeoutException {
       // The write was handed to Firestore but no server ack arrived inside
       // `_submitTimeout`. The outcome is UNKNOWN, not failed — it may still
-      // commit from the offline queue — so this deliberately reads as
-      // "couldn't confirm" rather than "couldn't post".
+      // commit from the offline queue.
       //
       // `_pendingReviewId` is left intact (it is only ever cleared on success),
-      // so tapping Retry takes the reviewExists dedup-probe branch above and
-      // adopts the prior write if it did land. That is what makes retry safe to
-      // promise in the copy.
-      if (mounted) {
-        showTabeminaBlockedSnackbar(
-          context,
-          message: _isEdit ? l.updateTimeout : l.submitTimeout,
-          // Only new reviews have a B-1 draft; edits aren't persisted.
-          subtext: _isEdit ? null : l.submitTimeoutRetrySafe,
-          retryLabel: l.retry,
-          onRetry: _post,
-        );
-      }
+      // so tapping Retry takes the probeReviewWrite dedup branch above and
+      // adopts the prior write only if the SERVER confirmed it.
+      _showQueuedState(l);
     } catch (_) {
       // Submit failed mid-flight (e.g. the Firestore write dropped after the
       // pre-check passed). Photos were uploaded before this point and `_canPost`
@@ -805,6 +811,28 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
     } finally {
       if (mounted) setState(() => _posting = false);
     }
+  }
+
+  /// The write is in Firestore's hands but the SERVER has not acknowledged it.
+  ///
+  /// Shared by the two paths that reach that state — the submit timeout, and
+  /// the retry probe finding a locally-queued write — because they are the same
+  /// situation from the user's side and must not drift apart.
+  ///
+  /// Deliberately does NOT pop: navigating away would read as success for a
+  /// write that may still be rejected. The user stays on the form with their
+  /// content intact, which is also what keeps the draft meaningful as the
+  /// recovery path.
+  void _showQueuedState(_Labels l) {
+    if (!mounted) return;
+    showTabeminaBlockedSnackbar(
+      context,
+      message: _isEdit ? l.updateTimeout : l.submitTimeout,
+      // Only new reviews have a B-1 draft; edits aren't persisted.
+      subtext: _isEdit ? null : l.submitTimeoutRetrySafe,
+      retryLabel: l.retry,
+      onRetry: _post,
+    );
   }
 
   /// Single success path for a NEW review — invoked from BOTH the direct-create
@@ -1229,7 +1257,8 @@ class _Labels {
   // C-4 submit-timeout copy. Distinct from [uploadFailed] on purpose: a
   // timeout means the write's outcome is UNKNOWN (it may still commit from the
   // offline queue), so the wording must not claim failure — and the subtext
-  // promises that Retry is safe, which the reviewExists dedup probe backs up.
+  // promises that Retry is safe, which the probeReviewWrite dedup probe backs
+  // up — it adopts a prior write ONLY when the server confirmed it.
   final String submitTimeout;
   final String updateTimeout;
   final String submitTimeoutRetrySafe;

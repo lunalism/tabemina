@@ -49,6 +49,27 @@ class ReviewsUnavailableException implements Exception {
       'reviews exist';
 }
 
+/// What the retry dedup probe found at a review id.
+///
+/// Deliberately three-valued rather than a bool: "a document is there" and "the
+/// server has accepted a document" are different facts, and conflating them
+/// makes a locally-queued write look like a published review. Only [committed]
+/// may be treated as a success — it is the sole state that licenses clearing
+/// the draft, firing analytics, or telling the user their review is live.
+enum ReviewWriteState {
+  /// Nothing at this id. The prior attempt never landed; writing is safe.
+  absent,
+
+  /// A document exists but is still an unacknowledged LOCAL mutation — the
+  /// backend has not accepted it and may yet reject it (rules, expired auth,
+  /// oversize field). Not a success, and not worth re-writing: the queued write
+  /// will be delivered on its own.
+  pending,
+
+  /// A document exists and is server-confirmed. The only success state.
+  committed,
+}
+
 /// Abstract review-storage contract.
 ///
 /// The presentation layer talks to this interface only — never to Firestore
@@ -58,14 +79,18 @@ abstract class ReviewRepository {
   /// Mint a fresh review document id WITHOUT writing anything. The caller
   /// holds onto this stable id across submit attempts so a lost-ack retry
   /// re-targets the SAME document instead of creating a duplicate (see
-  /// [submitReview] / [reviewExists]).
+  /// [submitReview] / [probeReviewWrite]).
   String newReviewId();
 
-  /// Whether a review document with [reviewId] already exists. The read rule
-  /// is public, so this is always permitted — it's the dedup probe a retry
-  /// runs before deciding whether the prior (possibly lost-ack) write
-  /// actually committed.
-  Future<bool> reviewExists(String reviewId);
+  /// The dedup probe a retry runs before deciding whether the prior (possibly
+  /// lost-ack) write actually committed. The read rule is public, so this is
+  /// always permitted.
+  ///
+  /// Returns [ReviewWriteState] rather than a bool because a local read can see
+  /// the caller's OWN queued write. Implementations MUST NOT report a write the
+  /// backend has not acknowledged as [ReviewWriteState.committed] — that is
+  /// what keeps "retry is safe" true rather than merely plausible.
+  Future<ReviewWriteState> probeReviewWrite(String reviewId);
 
   /// Write the review document at [reviewId] with already-uploaded
   /// [photoUrls]. The id is minted up-front by [newReviewId] and passed in so
@@ -77,8 +102,8 @@ abstract class ReviewRepository {
   ///
   /// Always a `set()` create — never a re-`set()` of an existing doc, which
   /// the Firestore rules route through the owner-only UPDATE path and reject.
-  /// Callers MUST gate a retry on [reviewExists] and skip the write when the
-  /// doc is already there.
+  /// Callers MUST gate a retry on [probeReviewWrite] and skip the write unless
+  /// it reports [ReviewWriteState.absent].
   Future<ReviewEntity> submitReview(
     String reviewId,
     ReviewDraftData draft,

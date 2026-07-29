@@ -44,15 +44,15 @@ class FirebaseReviewRepository implements ReviewRepository {
   ///
   /// A [TimeoutException] here means the outcome is UNKNOWN, not failed: the
   /// write may still commit later from the offline queue. Callers must treat it
-  /// as ambiguous and re-probe with [reviewExists] before writing again — never
-  /// mint a fresh review id on it.
+  /// as ambiguous and re-probe with [probeReviewWrite] before writing again —
+  /// never mint a fresh review id on it.
   static const Duration _submitTimeout = Duration(seconds: 10);
 
   @override
   String newReviewId() => _reviews.doc().id;
 
   @override
-  Future<bool> reviewExists(String reviewId) async {
+  Future<ReviewWriteState> probeReviewWrite(String reviewId) async {
     // Read is public per the Firestore rules, so this probe is always allowed
     // — unlike a re-set(), which would hit the owner-only UPDATE path.
     //
@@ -60,7 +60,23 @@ class FirebaseReviewRepository implements ReviewRepository {
     // already misbehaved once. Offline the default serverAndCache get() falls
     // back to the cache and resolves, but online-unreachable it would hang.
     final snap = await _reviews.doc(reviewId).get().timeout(_submitTimeout);
-    return snap.exists;
+    if (!snap.exists) return ReviewWriteState.absent;
+
+    // `exists` alone is NOT proof the server has the document. A default get()
+    // is Source.serverAndCache, and Firestore applies the local mutation queue
+    // on top of cached reads — so the set() that just timed out reads straight
+    // back as exists:true from our own pending write. hasPendingWrites is the
+    // only thing that separates "the backend accepted this" from "we are still
+    // holding it", and the distinction decides whether we may clear the user's
+    // draft.
+    //
+    // Source.server would also avoid the false positive but is the wrong tool:
+    // this probe runs immediately after a network failure, so requiring a fresh
+    // round trip is self-defeating — and it would equally reject a document
+    // legitimately cached from a real prior server ack.
+    return snap.metadata.hasPendingWrites
+        ? ReviewWriteState.pending
+        : ReviewWriteState.committed;
   }
 
   @override
@@ -72,7 +88,8 @@ class FirebaseReviewRepository implements ReviewRepository {
   ) async {
     // The id is minted by [newReviewId] and passed in so a retry re-targets
     // the same doc. This is always a create (set on a not-yet-existing id);
-    // callers gate retries on [reviewExists] and never re-set an existing doc.
+    // callers gate retries on [probeReviewWrite] and never re-set an existing
+    // doc.
     final docRef = _reviews.doc(reviewId);
     final now = DateTime.now();
     final data = <String, dynamic>{
@@ -101,7 +118,7 @@ class FirebaseReviewRepository implements ReviewRepository {
     };
     // Bounded — see [_submitTimeout]. On timeout the doc MAY still commit from
     // the offline queue, so the caller keeps its stable review id and re-probes
-    // with [reviewExists] on the next attempt rather than creating a duplicate.
+    // with [probeReviewWrite] on the next attempt rather than duplicating.
     await docRef.set(data).timeout(_submitTimeout);
 
     return ReviewEntity(
