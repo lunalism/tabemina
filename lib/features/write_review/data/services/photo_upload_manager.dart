@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:firebase_storage/firebase_storage.dart';
@@ -258,12 +259,33 @@ class PhotoUploadManager {
     _removedExistingStoragePaths.clear();
   }
 
+  /// Bound on the whole abandon-cleanup phase.
+  ///
+  /// Mirrors `FirebaseReviewRepository._storageDeleteTimeout`: on a stalled
+  /// network the Storage SDK keeps retrying for ~2 minutes, which left the
+  /// caller's back tap dead for that long with nothing rendered.
+  ///
+  /// On timeout we return and let the caller pop anyway. That is deliberate and
+  /// is NOT a cleanup guarantee being dropped: the deletes stay queued in the
+  /// SDK and still land on reconnect, which on this path — the user abandoning
+  /// a draft — is exactly what they asked for. Anything that never lands is
+  /// covered by the tracked v1.1 server-side reconciliation sweep. Blocking the
+  /// user in order to guarantee cleanup is the bug being fixed, not the
+  /// contract.
+  static const Duration _cancelTimeout = Duration(seconds: 10);
+
   /// Abandon: delete every uploaded (non-existing) photo from Storage and
   /// clear local temp files. Existing photos are left untouched.
+  ///
+  /// MUST NOT be called once a review write has been handed to Firestore — see
+  /// `_WriteReviewScreenState._submitInitiated`. Deleting the blobs of a write
+  /// that already committed (or that commits later from the offline queue)
+  /// publishes a review whose photoUrls 404.
   Future<void> cancelAll() async {
-    // Collect each Storage delete so we can await them together — they must
+    // Collect each Storage delete so we can await them together — they should
     // resolve BEFORE this returns, since the caller pops the screen right
-    // after and would otherwise drop the in-flight deletes (orphan blobs).
+    // after. Bounded by [_cancelTimeout] so a stalled network can't hold the
+    // pop hostage.
     final storageDeletes = <Future<void>>[];
     for (final photo in _photos) {
       if (photo.isExisting) continue;
@@ -284,7 +306,14 @@ class PhotoUploadManager {
         processed.delete().catchError((_) => processed);
       }
     }
-    await Future.wait(storageDeletes);
+    try {
+      await Future.wait(storageDeletes).timeout(_cancelTimeout);
+    } on TimeoutException {
+      // Proceed regardless — see [_cancelTimeout]. The queued deletes are not
+      // cancelled by giving up on the wait; they still land on reconnect.
+      debugPrint('cancelAll: Storage deletes still pending after '
+          '$_cancelTimeout; releasing the caller.');
+    }
     _photos.clear();
     _notify();
   }

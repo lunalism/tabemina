@@ -145,7 +145,18 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
 
   /// Set while leaving with content so the cleanup (cancelAll) can't trigger a
   /// draft re-save that would overwrite the kept draft with empty photos.
+  ///
+  /// Distinct from [_closing], which is the UI-blocking flag: this one is about
+  /// persistence ("don't write the draft"), that one about input ("don't let
+  /// anything else happen"). They happen to be set together on the create path,
+  /// but the edit path sets only [_closing] — edit mode has no draft.
   bool _leaving = false;
+
+  /// The abandon-cleanup is running. Blocks input and shows the bar spinner so
+  /// a back tap is never a silent no-op — `cancelAll` can take up to its 10s
+  /// timeout on a stalled network, and before this the screen rendered nothing
+  /// at all for that whole window.
+  bool _closing = false;
 
   bool get _isEdit => widget.existingReview != null;
 
@@ -396,7 +407,41 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
       _priceTagCount == 1 &&
       !_posting;
 
+  /// Delete this session's uploaded blobs, behind the screen's blocking state.
+  ///
+  /// Two guards, in order:
+  ///  1. FORBIDDEN once [_submitInitiated] — a handed-off write can't be
+  ///     recalled, so deleting its photos publishes a review whose photoUrls
+  ///     404. Skip cleanup entirely and let the caller pop; the blobs are left
+  ///     for the server-side reconciliation sweep. This is the whole reason the
+  ///     flag exists.
+  ///  2. [_closing] renders the bar spinner + AbsorbPointer for the duration,
+  ///     so the back tap is visibly doing something. `cancelAll` bounds itself
+  ///     at 10s, so this state is short-lived by construction.
+  Future<void> _cleanupUploads() async {
+    if (_submitInitiated) return;
+    setState(() => _closing = true);
+    try {
+      await _uploadManager.cancelAll();
+    } finally {
+      // Reset even though the caller pops immediately after: if the pop is
+      // skipped (unmounted, or a future caller that stays), the screen must not
+      // be left permanently blocked.
+      if (mounted) setState(() => _closing = false);
+    }
+  }
+
   Future<void> _onClose() async {
+    // Hard no-op while a submit is in flight, or while a previous close is
+    // already running its cleanup.
+    //
+    // PopScope enforces this for the swipe and hardware-back paths, but the
+    // top-bar arrow calls straight in here — so the block has to live in the
+    // method itself, not only in the arrow's enabled state. Post-Commit-1
+    // `_posting` always clears within ~11.5s (10s write timeout + the 1.5s
+    // success overlay), so this is a bounded block, not a new trap.
+    if (_posting || _closing) return;
+
     // Edit mode keeps the discard-confirmation: there's no auto-save/draft to
     // fall back on, so leaving must confirm before dropping unsaved edits.
     if (_isEdit) {
@@ -415,7 +460,7 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
         keepLabel: l.discardNo,
       );
       if (discard == true && mounted) {
-        await _uploadManager.cancelAll();
+        await _cleanupUploads();
         if (mounted) context.pop();
       }
       return;
@@ -450,7 +495,7 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
     // messenger and land on the destination screen).
     _leaving = true;
     _commentDebounce?.cancel();
-    await _uploadManager.cancelAll();
+    await _cleanupUploads();
     if (!mounted) return;
     context.pop();
   }
@@ -842,11 +887,12 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
     // canPop: false blocks the pop; onPopInvokedWithResult routes through
     // the existing discard dialog and pops only on confirm.
     return PopScope(
-      // Block back entirely while a submit is in flight; otherwise gate on
-      // unsaved content via the discard prompt.
-      canPop: !_hasContent && !_posting,
+      // Block back entirely while a submit is in flight or the cleanup is
+      // already running; otherwise gate on unsaved content via the discard
+      // prompt.
+      canPop: !_hasContent && !_posting && !_closing,
       onPopInvokedWithResult: (didPop, _) async {
-        if (didPop || _posting) return;
+        if (didPop || _posting || _closing) return;
         await _onClose();
       },
       child: Scaffold(
@@ -855,6 +901,10 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
         appBar: ReviewTopBar(
           title: _isEdit ? l.editTitle : l.screenTitle,
           onClose: _onClose,
+          // The arrow lives OUTSIDE the body's AbsorbPointer and does not route
+          // through PopScope, so without this it stayed live mid-submit — the
+          // one remaining way to trigger cancelAll against an in-flight write.
+          closeEnabled: !_posting && !_closing,
           // Create mode only: quiet "임시저장됨" status once the draft auto-saves
           // this session. Null in edit mode (no draft system).
           savedIndicator: _isEdit ? null : _draftSavedNotifier,
@@ -876,6 +926,7 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
               builder: (context, _, _) => PostButtonBar(
                 enabled: _canPost && !cooldownActive,
                 posting: _posting,
+                closing: _closing,
                 uploading: _uploadManager.hasActiveUploads,
                 hasRetryableFailed: _uploadManager.hasTransientFailed,
                 onPost: _post,
@@ -888,11 +939,12 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
             ),
           ],
         ),
-        // Lock the form's inputs while a submit is in flight so the user
-        // can't mutate fields mid-upload. The bottom bar lives outside this
-        // and self-guards via its own `posting` flag.
+        // Lock the form's inputs while a submit is in flight — or while the
+        // abandon-cleanup runs — so the user can't mutate fields mid-upload.
+        // The bottom bar lives outside this and self-guards via its own
+        // `posting` / `closing` flags.
         body: AbsorbPointer(
-          absorbing: _posting,
+          absorbing: _posting || _closing,
           child: SingleChildScrollView(
             padding: const EdgeInsets.only(bottom: 16),
             child: Column(

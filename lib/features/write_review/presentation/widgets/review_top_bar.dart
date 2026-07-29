@@ -18,12 +18,21 @@ class ReviewTopBar extends StatelessWidget implements PreferredSizeWidget {
     super.key,
     required this.title,
     required this.onClose,
+    this.closeEnabled = true,
     this.savedIndicator,
     this.savedLabel,
   });
 
   final String title;
   final VoidCallback onClose;
+
+  /// False while the screen is mid-submit or mid-cleanup. The arrow stays
+  /// VISIBLE and simply goes inert — a control that vanishes and reappears
+  /// reads as a glitch, and the user still needs to see where back lives.
+  ///
+  /// This is presentation only. `_onClose` enforces the same block itself, so
+  /// the guard does not depend on this flag being wired correctly.
+  final bool closeEnabled;
 
   /// Flips true once the create-mode draft has been auto-saved this session.
   /// Watched locally (ValueListenableBuilder) so the indicator updates without
@@ -59,9 +68,12 @@ class ReviewTopBar extends StatelessWidget implements PreferredSizeWidget {
                   icon: Icon(
                     Icons.arrow_back_ios_new_rounded,
                     size: 20,
-                    color: c.textSecondary,
+                    // Dimmed rather than hidden. The explicit color has to be
+                    // branched here because IconButton's own disabled tint is
+                    // overridden by passing one at all.
+                    color: closeEnabled ? c.textSecondary : c.textTertiary,
                   ),
-                  onPressed: onClose,
+                  onPressed: closeEnabled ? onClose : null,
                 ),
                 Expanded(
                   child: Center(

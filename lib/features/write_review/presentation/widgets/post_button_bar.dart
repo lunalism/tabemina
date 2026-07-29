@@ -21,6 +21,7 @@ class PostButtonBar extends StatelessWidget {
     super.key,
     required this.enabled,
     required this.posting,
+    this.closing = false,
     required this.uploading,
     required this.hasRetryableFailed,
     required this.onPost,
@@ -33,6 +34,14 @@ class PostButtonBar extends StatelessWidget {
 
   final bool enabled;
   final bool posting;
+
+  /// The user tapped back and the abandon-cleanup is running. Renders a bare
+  /// spinner in the disabled bar — no label, deliberately: every other state's
+  /// copy ("Posting…", "Photos uploading…") would be a lie here, and inventing
+  /// a fourth string for a state that lasts at most [_cancelTimeout] is not
+  /// worth the localization surface. The point is only that back is visibly
+  /// doing something rather than silently doing nothing.
+  final bool closing;
   final bool uploading;
   final bool hasRetryableFailed;
   final VoidCallback onPost;
@@ -66,6 +75,22 @@ class PostButtonBar extends StatelessWidget {
   }
 
   Widget _button(AppColors c) {
+    // Highest priority: the screen is tearing down, so nothing else the bar
+    // could offer is actionable any more.
+    if (closing) {
+      return _Tappable(
+        onTap: null,
+        color: c.bgSkeleton,
+        child: SizedBox(
+          width: 20,
+          height: 20,
+          child: CircularProgressIndicator(
+            strokeWidth: 2,
+            color: c.textSecondary,
+          ),
+        ),
+      );
+    }
     // Retry takes priority over the disabled "uploading" look so the user
     // can act on failures without waiting. Only *retryable* (transient)
     // failures qualify — unprocessable ones fall through to disabled Post.
