@@ -585,6 +585,14 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
   }
 
   Future<void> _post() async {
+    // `_post` is reachable from a SnackBarAction on the ROOT messenger, which
+    // outlives this route by design — and since the queued state now pops, that
+    // Retry is very likely tapped after we're gone. `_canPost` alone wouldn't
+    // catch it: the photo list and the form fields survive disposal, so it can
+    // still evaluate true, and everything after it would then touch `ref` and
+    // `context` on a dead State. (Pre-existing on the uploadFailed path too —
+    // back out during its 4s window and Retry hit the same edge.)
+    if (!mounted) return;
     if (!_canPost) return;
     final user = ref.read(currentUserProvider);
     final lang = ref.read(appLocaleProvider).languageCode;
@@ -813,26 +821,82 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
     }
   }
 
+  /// Refresh everything downstream that has to reflect a review write.
+  ///
+  /// Shared by the server-acked path and the QUEUED path. Invalidating on a
+  /// merely-queued write is correct rather than optimistic sloppiness:
+  /// Firestore applies latency compensation to QUERIES as well as document
+  /// reads, so the refetch of [reviewCooldownRemainingProvider] runs
+  /// `getLastReviewTimeForPlace` against a local cache that already includes
+  /// the pending review — and the cooldown reads as active. Without this the
+  /// detail screen's write-review gate stays stale, the user opens the form
+  /// again, and posts a SECOND review for the same place. There is no
+  /// server-side cooldown enforcement (tracked for v1.1), so this client gate
+  /// is the only one there is.
+  ///
+  /// Accepted side effect: the home feed and My Page optimistically show a
+  /// review that could still be rejected and vanish. That is ordinary
+  /// latency-compensated behaviour, and a far smaller cost than a duplicate.
+  ///
+  /// KNOWN LIMITATION (queued path only). The feed's staleness self-corrects on
+  /// the next fetch, but the cooldown gate's does not: nothing in the app
+  /// observes the queued write's eventual ack, and
+  /// [reviewCooldownRemainingProvider] is a non-autoDispose `FutureProvider`.
+  /// So if the server later REJECTS the mutation, the ~24h cooldown computed
+  /// here from the latency-compensated read stays cached and keeps blocking a
+  /// legitimate re-write until the app restarts. Rare (needs a timeout AND a
+  /// rejection AND a same-session retry), session-scoped, and the draft
+  /// survives — whereas the duplicate review this prevents is permanent and
+  /// public. Closing it properly needs the write's settled future plumbed back
+  /// so the gate can be re-derived on ack or rejection.
+  ///
+  /// [hasDraftProvider] is deliberately NOT here — see `_onSubmitSuccess`.
+  void _invalidateReviewConsumers(String placeId) {
+    ref.invalidate(latestReviewsProvider);
+    ref.invalidate(userReviewsProvider);
+    ref.invalidate(canReviewPlaceProvider(placeId));
+    ref.invalidate(reviewCooldownRemainingProvider(placeId));
+  }
+
   /// The write is in Firestore's hands but the SERVER has not acknowledged it.
   ///
   /// Shared by the two paths that reach that state — the submit timeout, and
   /// the retry probe finding a locally-queued write — because they are the same
   /// situation from the user's side and must not drift apart.
   ///
-  /// Deliberately does NOT pop: navigating away would read as success for a
-  /// write that may still be rejected. The user stays on the form with their
-  /// content intact, which is also what keeps the draft meaningful as the
+  /// TERMINAL, so it pops like the success path does. Staying on the form was
+  /// worse in every direction: there is no action left to take there (Post just
+  /// reproduces this message), and nothing listens for the queued write's
+  /// eventual ack — so when it lands the screen would not change and the user
+  /// would sit in front of a form for an already-published review. Whether this
+  /// reads as "published" is the copy's job, not the navigation's.
+  ///
+  /// The draft is deliberately KEPT (no clearDraft here) as the insurance
+  /// against a later rejection; the restore prompt on the next visit is the
   /// recovery path.
   void _showQueuedState(_Labels l) {
     if (!mounted) return;
+    // Gate the next write even though this one is only queued — see
+    // [_invalidateReviewConsumers].
+    _invalidateReviewConsumers(_restaurant!.placeId);
+    // Shown on the ROOT ScaffoldMessenger, so it deliberately survives the pop
+    // below and lands on the destination screen. That is the only signal the
+    // user gets, which is why we don't clearSnackBars() the way the success
+    // path does.
+    //
+    // NO Retry action. Once this path pops, `_post` would run against a
+    // disposed State — but the deeper reason is semantic: the write has not
+    // FAILED, it is queued, and Firestore will deliver it without our help.
+    // "Retry" names an action that does not exist here, and re-submitting the
+    // same id would at best be a no-op. The action stayed while this state kept
+    // the user on the form; making the state terminal removes its meaning too.
     showTabeminaBlockedSnackbar(
       context,
       message: _isEdit ? l.updateTimeout : l.submitTimeout,
       // Only new reviews have a B-1 draft; edits aren't persisted.
       subtext: _isEdit ? null : l.submitTimeoutRetrySafe,
-      retryLabel: l.retry,
-      onRetry: _post,
     );
+    context.pop();
   }
 
   /// Single success path for a NEW review — invoked from BOTH the direct-create
@@ -850,6 +914,12 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
     // mints a fresh one.
     _pendingReviewId = null;
     await ref.read(draftStorageServiceProvider).clearDraft();
+    // Stays HERE rather than in [_invalidateReviewConsumers]: it exists to
+    // reflect the clearDraft() immediately above it. The queued path keeps its
+    // draft, so invalidating there would recompute an identical value while
+    // briefly flipping the provider to AsyncLoading — which My Page's empty
+    // state reads through `orElse: () => false`, hiding the "draft in progress"
+    // hint for a frame. No upside, small downside.
     ref.invalidate(hasDraftProvider);
 
     // Fire reviewSubmitted exactly once per successful submission. atmosphere =
@@ -866,16 +936,10 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
           );
     }
 
-    // Refresh the home feed's latest reviews + the user's grid. The detail
-    // page's placeReviewsProvider is a stream, so it picks up the change on
-    // its own.
-    ref.invalidate(latestReviewsProvider);
-    ref.invalidate(userReviewsProvider);
-    // A fresh post starts the per-place cooldown — refresh those checks so the
-    // detail page reflects it when the user returns.
-    final postedPlaceId = _restaurant!.placeId;
-    ref.invalidate(canReviewPlaceProvider(postedPlaceId));
-    ref.invalidate(reviewCooldownRemainingProvider(postedPlaceId));
+    // Refresh the home feed's latest reviews, the user's grid, and the
+    // per-place cooldown gate. The detail page's placeReviewsProvider is a
+    // stream, so it picks up the change on its own.
+    _invalidateReviewConsumers(_restaurant!.placeId);
 
     if (!mounted) return;
     // Dismiss any lingering failure/offline snackbar (shown on the root
