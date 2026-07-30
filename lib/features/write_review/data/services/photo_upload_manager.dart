@@ -261,7 +261,7 @@ class PhotoUploadManager {
 
   /// Bound on the whole abandon-cleanup phase.
   ///
-  /// Mirrors `FirebaseReviewRepository._storageDeleteTimeout`: on a stalled
+  /// Mirrors `FirebaseReviewRepository._deleteTimeout`: on a stalled
   /// network the Storage SDK keeps retrying for ~2 minutes, which left the
   /// caller's back tap dead for that long with nothing rendered.
   ///

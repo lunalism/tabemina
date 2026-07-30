@@ -39,7 +39,7 @@ class FirebaseReviewRepository implements ReviewRepository {
   /// caller's connectivity pre-check cannot detect — it never completes at all.
   /// Left unbounded that pinned the write screen's Post spinner up forever with
   /// back navigation disabled, i.e. an unrecoverable screen. 10s matches
-  /// [_storageDeleteTimeout] and the app-wide rule that no await tied to a
+  /// [_deleteTimeout] and the app-wide rule that no await tied to a
   /// spinner is unbounded.
   ///
   /// A [TimeoutException] here means the outcome is UNKNOWN, not failed: the
@@ -337,72 +337,101 @@ class FirebaseReviewRepository implements ReviewRepository {
     });
   }
 
-  /// Per-object bound on each Storage delete/list call in [deleteReview].
-  /// The Storage SDK's own retry window is ~2 minutes, which offline left
-  /// the delete spinner up until reconnect. Per-object (not wrapping the
-  /// whole phase) so a multi-photo review on a slow-but-working network
-  /// isn't failed while every individual call is succeeding; offline the
-  /// FIRST call times out, and a [TimeoutException] aborts the whole
-  /// operation before the doc delete (see below), so the failure surfaces
-  /// in ~10s either way.
-  static const Duration _storageDeleteTimeout = Duration(seconds: 10);
+  /// Bound on EVERY network call in [deleteReview] — the path read, the doc
+  /// delete, and the Storage cleanup phase.
+  ///
+  /// Was `_storageDeleteTimeout`, covering only the Storage objects, because the
+  /// doc delete ran last and was shielded behind them. Now that the doc delete
+  /// goes first it is the blocking call, and it sits behind a modal barrier with
+  /// `canPop: false` — so an unbounded await there is a hard trap, not merely
+  /// slow. Renamed rather than joined by a second constant: one bound for the
+  /// delete flow, mirroring [_submitTimeout] for the submit flow.
+  ///
+  /// The Storage SDK's own retry window is ~2 minutes, which offline left the
+  /// delete spinner up until reconnect.
+  static const Duration _deleteTimeout = Duration(seconds: 10);
 
   @override
   Future<void> deleteReview(String reviewId) async {
-    // Read the doc first to recover the exact Storage paths — the
+    // Read the doc BEFORE deleting it, to recover the exact Storage paths — the
     // pre-upload layout (`reviews/{userId}/{localId}.jpg`) shares a prefix
-    // across a user's reviews, so there's no per-review folder to wipe.
+    // across a user's reviews, so there's no per-review folder to wipe. Bounded
+    // like everything else here: this is the first call behind the caller's
+    // non-dismissible spinner. On timeout nothing has been issued, so the review
+    // and its photos are both untouched and the user simply retries.
     final docRef = _reviews.doc(reviewId);
-    final snap = await docRef.get();
+    final snap = await docRef.get().timeout(_deleteTimeout);
     final data = snap.data();
+    final storagePaths =
+        data == null ? const <String>[] : _stringList(data['photoStoragePaths']);
 
-    // TimeoutException propagates out of both branches below ON PURPOSE:
-    // a doc delete after skipped Storage deletes would orphan the photos
-    // permanently (the B-5 orphan pattern), so timeout = the whole delete
-    // fails, the review stays, and the user retries online. No rollback for
-    // objects already deleted before the timeout — a retried delete
-    // re-attempts idempotently (missing objects fall into the swallowed
-    // object-not-found case), and the server-side reconciliation backlog
-    // item covers any residue.
-    if (data != null) {
-      final storagePaths = _stringList(data['photoStoragePaths']);
-      if (storagePaths.isNotEmpty) {
-        for (final path in storagePaths) {
-          try {
-            await _storage.ref(path).delete().timeout(_storageDeleteTimeout);
-          } on TimeoutException {
-            rethrow;
-          } catch (e) {
-            // Photo may already be gone — ignore so the doc still deletes.
-            debugPrint('Failed to delete photo at $path: $e');
-          }
-        }
-      } else {
-        // Backwards compatibility: reviews created before path tracking
-        // used the old `reviews/{reviewId}/` folder layout. Try the
-        // folder-wide cleanup; old blobs may already be orphaned, which is
-        // acceptable.
-        try {
-          final listing = await _storage
-              .ref('reviews/$reviewId')
-              .listAll()
-              .timeout(_storageDeleteTimeout);
-          for (final item in listing.items) {
-            await item.delete().timeout(_storageDeleteTimeout);
-          }
-        } on TimeoutException {
-          rethrow;
-        } catch (e) {
-          debugPrint('Old-style photo cleanup failed: $e');
-        }
+    // THE DOC DELETE GOES FIRST.
+    //
+    // This inverts what the old comment here argued for, deliberately. That
+    // version deleted the blobs first so a timeout would abort before the doc
+    // delete and avoid orphaning photos (the B-5 pattern). But it bought that at
+    // the cost of the opposite failure: Storage deletes landing and the doc
+    // delete then failing left the review PUBLISHED and pointing at objects that
+    // no longer exist. The trade is now settled the other way — an orphan blob is
+    // invisible and sweepable, a dead reference in a live review is neither, and
+    // it is visible to every other user. Same invariant 93911c5 applied to
+    // updateReview: never delete a blob before the write that drops its
+    // reference is acked.
+    await docRef.delete().timeout(_deleteTimeout);
+
+    // ACKED by the server — nothing references these blobs any more, so dropping
+    // them is safe. Reaching this line at all IS the guarantee: the await above
+    // propagates on both other outcomes, so they skip the cleanup with no branch.
+    //
+    //   TIMED OUT -> the doc delete is queued and WILL land. Deleting the blobs
+    //                now would corrupt the review if that queued delete were
+    //                later rejected — it would come back referencing objects
+    //                that are gone. They become permanent orphans instead:
+    //                sweepable (tracked v1.1 reconciliation), where a dead
+    //                reference is not.
+    //   THREW     -> definitive failure, nothing queued. Review and photos both
+    //                stay intact and mutually consistent; the user retries.
+    //
+    // NON-FATAL from here down, and that is the point of the ordering: the review
+    // is already gone, so aborting on one failed blob would only skip the
+    // remaining ones while reporting a failure that did not happen. A Storage
+    // error after a successful doc delete must NOT surface to the user.
+    //
+    // Issued CONCURRENTLY under ONE budget, not sequentially per object. Making
+    // these non-fatal removed the old abort-on-first-timeout, which would
+    // otherwise have let a 5-photo review stack 5×10s of spinner where it used to
+    // stop at 10s.
+    final removals = <Future<void>>[
+      for (final path in storagePaths)
+        _deleteQuietly(() => _storage.ref(path).delete()),
+    ];
+    if (removals.isNotEmpty) {
+      try {
+        await Future.wait(removals).timeout(_deleteTimeout);
+      } on TimeoutException {
+        debugPrint('deleteReview: Storage cleanup still pending after '
+            '$_deleteTimeout; the review is already deleted.');
       }
+      return;
     }
 
-    // Delete the document last — reached only when the Storage phase ran to
-    // completion (non-timeout Storage errors are swallowed above, timeouts
-    // abort). Offline queueing of THIS delete (it completes on reconnect)
-    // is fine — by now the photos are gone.
-    await docRef.delete();
+    // Backwards compatibility: reviews created before path tracking used the old
+    // `reviews/{reviewId}/` folder layout, so there are no paths on the doc to
+    // work from. Try the folder-wide cleanup instead; old blobs may already be
+    // orphaned, which is acceptable. Skipped when the doc was already absent —
+    // there was nothing to derive a layout from, matching prior behaviour.
+    if (data == null) return;
+    try {
+      final listing =
+          await _storage.ref('reviews/$reviewId').listAll().timeout(
+                _deleteTimeout,
+              );
+      await Future.wait([
+        for (final item in listing.items) _deleteQuietly(item.delete),
+      ]).timeout(_deleteTimeout);
+    } catch (e) {
+      debugPrint('deleteReview: old-style photo cleanup failed: $e');
+    }
   }
 
   @override
@@ -457,6 +486,11 @@ class FirebaseReviewRepository implements ReviewRepository {
 
   /// Run one best-effort Storage delete, swallowing every failure.
   ///
+  /// Shared by [updateReview]'s removals and [deleteReview]'s cleanup. Both
+  /// reach it only AFTER their Firestore write has acked, so by then a failure
+  /// here can only leave an orphan blob — never a dangling reference — and must
+  /// not be escalated to the user.
+  ///
   /// Takes a THUNK rather than a Future so a synchronous throw from
   /// [FirebaseStorage.refFromURL] (it validates the URL eagerly) is caught here
   /// too — building the future list inline would let that escape past the
@@ -467,7 +501,7 @@ class FirebaseReviewRepository implements ReviewRepository {
     } catch (e) {
       // Already gone / no permission / unparseable URL — all acceptable. The
       // caller's timeout covers the still-hanging case separately.
-      debugPrint('updateReview: best-effort photo delete failed: $e');
+      debugPrint('best-effort photo delete failed: $e');
     }
   }
 
