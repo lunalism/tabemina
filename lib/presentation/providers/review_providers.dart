@@ -133,17 +133,6 @@ final visibleLatestReviewsProvider =
   );
 });
 
-/// Whether the signed-in user may post a new review for [placeId] right now
-/// (24h per-place cooldown). False when signed out — they can't post anyway.
-/// Uses [currentUserProvider] rather than FirebaseAuth so the presentation
-/// layer stays Firebase-free.
-final canReviewPlaceProvider =
-    FutureProvider.family<bool, String>((ref, placeId) async {
-  final user = ref.watch(currentUserProvider);
-  if (user == null) return false;
-  return ref.read(reviewRepositoryProvider).canReviewPlace(user.uid, placeId);
-});
-
 /// Remaining cooldown for [placeId], or null if the user can review now
 /// (no prior review, 24h elapsed, or signed out). Drives the cooldown
 /// banner / dialog copy.

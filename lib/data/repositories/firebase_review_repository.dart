@@ -259,6 +259,17 @@ class FirebaseReviewRepository implements ReviewRepository {
     // automatic single-field indexes and needs no composite index. A user
     // has at most a handful of reviews per place, so taking the max
     // createdAt client-side is cheap.
+    //
+    // Kept as a plain get() rather than
+    // `get(GetOptions(serverTimestampBehavior: estimate))`, which cloud_firestore
+    // 6.5.0 does expose for query gets and which would resolve a pending stamp to
+    // a local estimate — arguably more precise than the per-doc check below,
+    // since it fires ONLY for an unresolved timestamp transform and so can't
+    // mistake a corrupt document for a fresh one. Not chosen because it depends
+    // on the option being honoured through the platform channel for QUERIES, and
+    // this gate is the only thing standing between a queued write and a duplicate
+    // review — unverifiable-on-device plumbing is the wrong thing to rest that on.
+    // Revisit if the estimate path is ever confirmed on a real device.
     final snap = await _reviews
         .where('userId', isEqualTo: userId)
         .where('placeId', isEqualTo: placeId)
@@ -266,20 +277,43 @@ class FirebaseReviewRepository implements ReviewRepository {
     DateTime? latest;
     for (final doc in snap.docs) {
       final ts = doc.data()['createdAt'];
+      final DateTime? dt;
       if (ts is Timestamp) {
-        final dt = ts.toDate();
-        if (latest == null || dt.isAfter(latest)) latest = dt;
+        dt = ts.toDate();
+      } else if (doc.metadata.hasPendingWrites) {
+        // `createdAt` is written with FieldValue.serverTimestamp(), which reads
+        // as NULL locally until the server stamps it. So a queued submit lands
+        // in this query — latency compensation matches it on both equality
+        // filters — with a null timestamp, and the old `is Timestamp` guard
+        // silently skipped it. That made this function return null, which is
+        // this repository's encoding for "no prior review", and the 24h cooldown
+        // gate let the user straight back in to post a duplicate.
+        //
+        // hasPendingWrites is DOCUMENT-level, not field-level, so this is a
+        // heuristic rather than a proof: it says "this doc has an unacked local
+        // mutation", not "createdAt's server-timestamp transform is what's
+        // unacked". The two coincide for a freshly submitted review, which is the
+        // case that matters. They diverge only for a document whose createdAt is
+        // genuinely null AND which has some other pending mutation — a corrupt
+        // legacy doc being edited — where this wrongly reads as "posted now" and
+        // blocks the user for 24h. Narrow, and it self-heals on app restart once
+        // nothing is pending. `ServerTimestampBehavior.estimate` would decide this
+        // exactly rather than heuristically; see the note on the query above for
+        // why it isn't used yet.
+        dt = DateTime.now();
+      } else {
+        // Null with nothing pending is a genuine data anomaly (a doc written
+        // before the field existed, or a partial write). Skip it, as before —
+        // deliberately NOT routed through _timestampOrNow, which would read it
+        // as "posted now" and block the user for 24h with no way out.
+        dt = null;
       }
+      if (dt == null) continue;
+      if (latest == null || dt.isAfter(latest)) latest = dt;
     }
     return latest;
   }
 
-  @override
-  Future<bool> canReviewPlace(String userId, String placeId) async {
-    final last = await getLastReviewTimeForPlace(userId, placeId);
-    if (last == null) return true;
-    return DateTime.now().difference(last) >= const Duration(hours: 24);
-  }
 
   @override
   Future<List<ReviewEntity>> getReviewsByUser(String userId) async {
@@ -589,10 +623,23 @@ class FirebaseReviewRepository implements ReviewRepository {
     return const [];
   }
 
-  /// Firestore returns `null` for `serverTimestamp` fields on the local-write
-  /// echo (before the round-trip resolves), so callers might see a freshly
-  /// posted review for a few hundred ms with no createdAt. Falling back to
-  /// "now" keeps the UI sortable in that window.
+  /// Firestore returns `null` for `serverTimestamp` fields until the server
+  /// stamps them, so a freshly posted review reads back with no createdAt.
+  /// Falling back to "now" keeps the UI sortable meanwhile.
+  ///
+  /// That window is NOT "a few hundred ms", as this comment used to claim. It
+  /// lasts until the write is acked — on a queued (timed-out) submit that means
+  /// until the device reconnects: minutes, hours, or never if the write is
+  /// ultimately rejected.
+  ///
+  /// Two consequences worth knowing before reusing this:
+  ///  - It MASKS the null for every entity consumer, which is why
+  ///    [getLastReviewTimeForPlace] deliberately does not use it: that function
+  ///    needs to tell a pending stamp from a corrupt one, and "now" for a corrupt
+  ///    document would block the user behind a 24h cooldown with no way out.
+  ///  - The masking is client-side only. Firestore's own `orderBy('createdAt')`
+  ///    still sees null, which sorts LOWEST — so a queued review lands last under
+  ///    `descending: true` regardless of what this returns.
   DateTime _timestampOrNow(dynamic v) {
     if (v is Timestamp) return v.toDate();
     return DateTime.now();

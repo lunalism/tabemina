@@ -198,8 +198,14 @@ class SettingsScreen extends ConsumerWidget {
     MyPageLabels labels,
   ) async {
     // Drafts are per-account — drop the in-progress draft so it doesn't bleed
-    // into the next user's session.
-    await ref.read(draftStorageServiceProvider).clearDraft();
+    // into the next user's session. The pending submit ids go with it for the
+    // same reason, and more urgently: left behind, the next user posting at the
+    // same place would adopt this user's review id, the dedup probe would find
+    // that already-committed document, and their own review would be silently
+    // discarded as a "success".
+    final draftStore = ref.read(draftStorageServiceProvider);
+    await draftStore.clearDraft();
+    await draftStore.clearAllPendingReviewIds();
     ref.invalidate(hasDraftProvider);
     await ref.read(authRepositoryProvider).signOut();
     if (!context.mounted) return;

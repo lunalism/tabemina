@@ -718,7 +718,6 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
         ref.invalidate(latestReviewsProvider);
         ref.invalidate(userReviewsProvider);
         final editedPlaceId = _restaurant!.placeId;
-        ref.invalidate(canReviewPlaceProvider(editedPlaceId));
         ref.invalidate(reviewCooldownRemainingProvider(editedPlaceId));
         if (!mounted) return;
         HapticFeedback.lightImpact();
@@ -742,6 +741,23 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
           language: lang,
         );
 
+        // Adopt a persisted pending id before routing. Covers the gap where the
+        // user DISCARDED the draft in the restore dialog while a queued write was
+        // still outstanding: clearDraft used to take the id with it, so the next
+        // Post minted a fresh document id and published a second review once the
+        // queued write landed. The id now outlives the content (scoped to this
+        // placeId, and only while it is young enough to be safe to adopt — see
+        // DraftStorageService).
+        //
+        // Hooked here rather than in initState so it covers every entry path
+        // uniformly: detail, tab, restored draft, and discarded draft.
+        _pendingReviewId ??= await ref
+            .read(draftStorageServiceProvider)
+            .loadPendingReviewId(
+              placeId: _restaurant!.placeId,
+              userId: user.uid,
+            );
+
         // Idempotent submit (hotspot #3): a lost-ack retry must NOT mint a
         // fresh id (= a duplicate review). Route on _pendingReviewId.
         if (_pendingReviewId == null) {
@@ -750,6 +766,13 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
           // path stays a single write — no extra read.
           final id = repo.newReviewId();
           _pendingReviewId = id;
+          // Persist the id on its own key as well as inside the draft, so a
+          // later content-discard can't take the idempotency token with it.
+          await ref.read(draftStorageServiceProvider).savePendingReviewId(
+                placeId: _restaurant!.placeId,
+                reviewId: id,
+                userId: user.uid,
+              );
           _saveDraftNow();
           // Point of no return — see [_submitInitiated].
           _submitInitiated = true;
@@ -880,9 +903,26 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
   /// server-side cooldown enforcement (tracked for v1.1), so this client gate
   /// is the only one there is.
   ///
-  /// Accepted side effect: the home feed and My Page optimistically show a
-  /// review that could still be rejected and vanish. That is ordinary
-  /// latency-compensated behaviour, and a far smaller cost than a duplicate.
+  /// What each consumer ACTUALLY does with a queued review — the earlier claim
+  /// that they all "optimistically show" it was only two-thirds right:
+  ///  - My Page grid: shows it FIRST. Its client-side re-sort runs on
+  ///    `ReviewEntity.createdAt`, which `_timestampOrNow` has already filled with
+  ///    "now".
+  ///  - Home feed: usually does NOT show it. The query's `orderBy('createdAt',
+  ///    descending: true)` sees the raw null, which sorts lowest, so the queued
+  ///    review lands LAST and the `take(limit)` truncates it away whenever the
+  ///    user has more than a handful of visible reviews.
+  ///  - Detail list: shows it at the BOTTOM, same ordering, no limit to truncate.
+  ///
+  /// Left as-is deliberately. The queued copy promises the review will post once
+  /// back online, so not displaying it yet is coherent rather than broken, and it
+  /// self-corrects the moment the server stamps createdAt. Reordering client-side
+  /// would mean overriding the query in three places to surface a review that may
+  /// still be rejected.
+  ///
+  /// Accepted side effect where it IS shown: a review that could later be
+  /// rejected and vanish. Ordinary latency-compensated behaviour, and a far
+  /// smaller cost than a duplicate.
   ///
   /// KNOWN LIMITATION (queued path only). The feed's staleness self-corrects on
   /// the next fetch, but the cooldown gate's does not: nothing in the app
@@ -900,7 +940,6 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
   void _invalidateReviewConsumers(String placeId) {
     ref.invalidate(latestReviewsProvider);
     ref.invalidate(userReviewsProvider);
-    ref.invalidate(canReviewPlaceProvider(placeId));
     ref.invalidate(reviewCooldownRemainingProvider(placeId));
   }
 
@@ -969,7 +1008,15 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
     // (clearDraft wipes both), and drop the in-memory id so the NEXT review
     // mints a fresh one.
     _pendingReviewId = null;
-    await ref.read(draftStorageServiceProvider).clearDraft();
+    final draftStore = ref.read(draftStorageServiceProvider);
+    await draftStore.clearDraft();
+    // The ONLY place the persisted id is cleared. Safe here and nowhere else:
+    // the write is server-acked, so no outstanding mutation could still be
+    // re-targeted at it. In particular NOT cleared on the empty-form abandon
+    // path — a previous session's queued write can still be outstanding while
+    // this session's form is empty, and dropping the token there would reopen
+    // the duplicate vector across app launches.
+    await draftStore.clearPendingReviewId(_restaurant!.placeId);
     // Stays HERE rather than in [_invalidateReviewConsumers]: it exists to
     // reflect the clearDraft() immediately above it. The queued path keeps its
     // draft, so invalidating there would recompute an identical value while

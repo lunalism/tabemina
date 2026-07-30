@@ -165,10 +165,6 @@ abstract class ReviewRepository {
   /// if they've never reviewed it. Used for the 24h per-place cooldown.
   Future<DateTime?> getLastReviewTimeForPlace(String userId, String placeId);
 
-  /// Whether [userId] may post a new review for [placeId] right now — true
-  /// if they've never reviewed it or their last review was 24h+ ago.
-  Future<bool> canReviewPlace(String userId, String placeId);
-
   /// One-shot read of the newest reviews across all places (Home feed).
   /// Throws [ReviewsUnavailableException] when the backend is unreachable and
   /// no cached copy exists — an empty result then means "no reviews", never

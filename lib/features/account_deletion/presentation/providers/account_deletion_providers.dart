@@ -41,8 +41,11 @@ class AccountDeletionController {
     final uid = _ref.read(currentUserProvider)?.uid;
     if (uid == null) return;
     await _ref.read(userRepositoryProvider).requestAccountDeletion(uid);
-    // Mirror the sign-out cleanup so a draft doesn't bleed into the next user.
-    await _ref.read(draftStorageServiceProvider).clearDraft();
+    // Mirror the sign-out cleanup so neither a draft nor a pending submit id
+    // bleeds into the next user (see _signOut for why the ids matter more).
+    final draftStore = _ref.read(draftStorageServiceProvider);
+    await draftStore.clearDraft();
+    await draftStore.clearAllPendingReviewIds();
     _ref.invalidate(hasDraftProvider);
   }
 
