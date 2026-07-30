@@ -7,6 +7,7 @@ import '../../../../core/constants/app_colors.dart';
 import '../../../../core/providers/app_locale_provider.dart';
 import '../../../../core/router/app_router.dart';
 import '../../../../domain/entities/review_entity.dart';
+import '../../../../domain/repositories/review_repository.dart';
 import '../../../../presentation/providers/review_providers.dart';
 import '../../../../shared/widgets/network_image_fade.dart';
 import '../../../../shared/widgets/tabemina_snackbar.dart';
@@ -139,8 +140,10 @@ class _ReviewCell extends ConsumerWidget {
     // for the duration anyway.
     if (_isDeletingReview) return;
     _isDeletingReview = true;
-    // Blocking barrier + spinner for the duration of the delete (Storage
-    // photos go first, sequentially — seconds on a slow network).
+    // Blocking barrier + spinner for the duration of the delete. Bounded since
+    // b17d00b: the doc delete goes FIRST and every phase carries a 10s timeout,
+    // so this can no longer sit here indefinitely (see deleteReview's per-branch
+    // figures).
     // PopScope(canPop: false): barrierDismissible only stops barrier taps,
     // not the Android system Back action. The dialog's own context is
     // retained so dismissal can only ever pop the spinner route itself,
@@ -167,8 +170,15 @@ class _ReviewCell extends ConsumerWidget {
       },
     );
     var failed = false;
+    var queued = false;
     try {
-      await ref.read(reviewRepositoryProvider).deleteReview(review.reviewId);
+      // The QUEUED outcome arrives as a return value, not an exception: the
+      // repository's path read and its doc delete both throw TimeoutException, so
+      // catching that here would report a review as deleted when the read timed
+      // out and nothing was ever issued. Anything thrown left the review intact.
+      final outcome =
+          await ref.read(reviewRepositoryProvider).deleteReview(review.reviewId);
+      queued = outcome == ReviewDeleteOutcome.queued;
     } catch (_) {
       failed = true;
     } finally {
@@ -180,15 +190,28 @@ class _ReviewCell extends ConsumerWidget {
       }
     }
     if (!failed) {
-      // Refresh the user's grid + the home feed. Detail-page review streams
-      // pick up the deletion on their own.
+      // Refresh the user's grid + the home feed — on the QUEUED path too, where
+      // the refetch reads a cache the deletion has already been applied to.
+      // Skipping it there left the grid rendering a review that was locally
+      // gone. Detail-page review streams pick up the deletion on their own, and
+      // would equally pick up a rollback if the queued delete were rejected.
       ref.invalidate(userReviewsProvider);
       ref.invalidate(latestReviewsProvider);
     }
     if (context.mounted) {
       showTabeminaSnackbar(
         context,
-        message: failed ? labels.reviewDeleteFailed : labels.reviewDeleted,
+        message: failed
+            ? labels.reviewDeleteFailed
+            : queued
+                ? labels.reviewDeleteQueued
+                : labels.reviewDeleted,
+        // The queued copy is a full sentence; 4s, matching the write flow's
+        // queued snackbar. No action on any branch — a queued delete has nothing
+        // to retry.
+        duration: queued
+            ? const Duration(seconds: 4)
+            : const Duration(seconds: 2),
       );
     }
   }

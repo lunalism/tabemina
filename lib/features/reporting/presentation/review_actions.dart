@@ -6,6 +6,7 @@ import '../../../core/providers/app_locale_provider.dart';
 import '../../../core/router/app_router.dart';
 import '../../../domain/entities/report_reason.dart';
 import '../../../domain/entities/review_entity.dart';
+import '../../../domain/repositories/review_repository.dart';
 import '../../../presentation/providers/auth_providers.dart';
 import '../../../presentation/providers/block_providers.dart';
 import '../../../presentation/providers/review_providers.dart';
@@ -125,7 +126,7 @@ Future<void> _blockFlow(
 /// In-flight guard for the delete branch of [_ownerActions]. File-scoped:
 /// the modal barrier already blocks same-screen taps while deleting, but the
 /// flag also makes a queued second confirm a no-op. deleteReview is not
-/// instant — it deletes Storage photos sequentially before the doc.
+/// instant — it deletes the doc, then cleans up Storage.
 bool _isDeletingReview = false;
 
 /// Unchanged edit/delete behaviour, mirroring the My Page grid so the user's
@@ -148,8 +149,9 @@ Future<void> _ownerActions(
       if (confirmed != true || !context.mounted) return;
       if (_isDeletingReview) return;
       _isDeletingReview = true;
-      // Blocking barrier + spinner for the duration of the delete (Storage
-      // photos go first, sequentially — seconds on a slow network).
+      // Blocking barrier + spinner for the duration of the delete. Bounded since
+      // b17d00b: the doc delete goes FIRST and every phase carries a 10s
+      // timeout, so this can no longer sit here indefinitely.
       // PopScope(canPop: false): barrierDismissible only stops barrier taps,
       // not the Android system Back action. The dialog's own context is
       // retained so dismissal can only ever pop the spinner route itself,
@@ -176,8 +178,15 @@ Future<void> _ownerActions(
         },
       );
       var failed = false;
+      var queued = false;
       try {
-        await ref.read(reviewRepositoryProvider).deleteReview(review.reviewId);
+        // Outcome comes back as a value, not an exception — see the identical
+        // block in review_photo_grid.dart. A thrown TimeoutException means the
+        // path read timed out and nothing was issued, i.e. a plain failure.
+        final outcome = await ref
+            .read(reviewRepositoryProvider)
+            .deleteReview(review.reviewId);
+        queued = outcome == ReviewDeleteOutcome.queued;
       } catch (_) {
         failed = true;
       } finally {
@@ -189,13 +198,22 @@ Future<void> _ownerActions(
         }
       }
       if (!failed) {
+        // Queued counts as deleted for refresh purposes — the cache already
+        // reflects it.
         ref.invalidate(userReviewsProvider);
         ref.invalidate(latestReviewsProvider);
       }
       if (context.mounted) {
         showTabeminaSnackbar(
           context,
-          message: failed ? labels.reviewDeleteFailed : labels.reviewDeleted,
+          message: failed
+              ? labels.reviewDeleteFailed
+              : queued
+                  ? labels.reviewDeleteQueued
+                  : labels.reviewDeleted,
+          duration: queued
+              ? const Duration(seconds: 4)
+              : const Duration(seconds: 2),
         );
       }
   }

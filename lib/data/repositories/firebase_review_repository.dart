@@ -351,14 +351,43 @@ class FirebaseReviewRepository implements ReviewRepository {
   /// delete spinner up until reconnect.
   static const Duration _deleteTimeout = Duration(seconds: 10);
 
+  /// Delete a review and its photos, doc-first.
+  ///
+  /// Every phase is bounded by [_deleteTimeout], so the reachable worst case per
+  /// branch — all of it spent behind the caller's non-dismissible spinner — is:
+  ///
+  ///   path read times out              ~10s  nothing issued, review intact
+  ///   read ok, doc delete times out    ~20s  cleanup skipped (queued delete)
+  ///   read ok, delete acks, cleanup
+  ///     stalls (path-tracked photos)   ~30s  review deleted, blobs orphaned
+  ///     stalls (legacy folder layout)  ~40s  ditto — TWO sequential budgets
+  ///                                          here, listAll() then the item
+  ///                                          deletes
+  ///
+  /// The ORDINARY offline case reaches only ~10s, not 30 or 40: a default
+  /// `get()` is serverAndCache, so offline the path read resolves instantly from
+  /// the cache (the user is deleting a review they can see), then the doc delete
+  /// times out and its propagation skips the cleanup entirely.
+  ///
+  /// The 30s and 40s branches therefore need a SPLIT failure — the Firestore
+  /// write acking while Storage stalls — and 40s additionally needs Storage
+  /// reads working while Storage deletes hang. Rare, and bounded either way.
   @override
-  Future<void> deleteReview(String reviewId) async {
+  Future<ReviewDeleteOutcome> deleteReview(String reviewId) async {
     // Read the doc BEFORE deleting it, to recover the exact Storage paths — the
     // pre-upload layout (`reviews/{userId}/{localId}.jpg`) shares a prefix
     // across a user's reviews, so there's no per-review folder to wipe. Bounded
     // like everything else here: this is the first call behind the caller's
-    // non-dismissible spinner. On timeout nothing has been issued, so the review
-    // and its photos are both untouched and the user simply retries.
+    // non-dismissible spinner.
+    //
+    // A timeout here PROPAGATES, and that is load-bearing. Nothing has been
+    // issued, so the review and its photos are both untouched — the caller must
+    // treat it as a plain failure and offer a retry. It must never surface as
+    // [ReviewDeleteOutcome.queued]: both this and the delete below throw the same
+    // TimeoutException, so the two phases are indistinguishable from outside, and
+    // conflating them would tell the user their review was deleted while it sat
+    // there intact. That ambiguity is exactly why this method returns an outcome
+    // instead of letting callers inspect the exception type.
     final docRef = _reviews.doc(reviewId);
     final snap = await docRef.get().timeout(_deleteTimeout);
     final data = snap.data();
@@ -377,18 +406,28 @@ class FirebaseReviewRepository implements ReviewRepository {
     // it is visible to every other user. Same invariant 93911c5 applied to
     // updateReview: never delete a blob before the write that drops its
     // reference is acked.
-    await docRef.delete().timeout(_deleteTimeout);
+    try {
+      await docRef.delete().timeout(_deleteTimeout);
+    } on TimeoutException {
+      // Handed off but not acked. The mutation is PENDING — not confirmed — and
+      // latency compensation has already removed the review locally, so the
+      // caller says "deleted, will sync" rather than "failed". A rejection would
+      // roll that back and the review would reappear; see
+      // [ReviewDeleteOutcome.queued] for why that is accepted for now. Cleanup is
+      // skipped: see the TIMED OUT case below.
+      return ReviewDeleteOutcome.queued;
+    }
 
     // ACKED by the server — nothing references these blobs any more, so dropping
     // them is safe. Reaching this line at all IS the guarantee: the await above
     // propagates on both other outcomes, so they skip the cleanup with no branch.
     //
-    //   TIMED OUT -> the doc delete is queued and WILL land. Deleting the blobs
-    //                now would corrupt the review if that queued delete were
-    //                later rejected — it would come back referencing objects
-    //                that are gone. They become permanent orphans instead:
-    //                sweepable (tracked v1.1 reconciliation), where a dead
-    //                reference is not.
+    //   TIMED OUT -> the doc delete is queued but unconfirmed. Deleting the blobs
+    //                now would corrupt the review in precisely the case that
+    //                makes the timeout ambiguous — a later rejection brings it
+    //                back, and it would come back referencing objects that are
+    //                gone. They become permanent orphans instead: sweepable
+    //                (tracked v1.1 reconciliation), where a dead reference is not.
     //   THREW     -> definitive failure, nothing queued. Review and photos both
     //                stay intact and mutually consistent; the user retries.
     //
@@ -412,7 +451,7 @@ class FirebaseReviewRepository implements ReviewRepository {
         debugPrint('deleteReview: Storage cleanup still pending after '
             '$_deleteTimeout; the review is already deleted.');
       }
-      return;
+      return ReviewDeleteOutcome.deleted;
     }
 
     // Backwards compatibility: reviews created before path tracking used the old
@@ -420,7 +459,7 @@ class FirebaseReviewRepository implements ReviewRepository {
     // work from. Try the folder-wide cleanup instead; old blobs may already be
     // orphaned, which is acceptable. Skipped when the doc was already absent —
     // there was nothing to derive a layout from, matching prior behaviour.
-    if (data == null) return;
+    if (data == null) return ReviewDeleteOutcome.deleted;
     try {
       final listing =
           await _storage.ref('reviews/$reviewId').listAll().timeout(
@@ -432,6 +471,7 @@ class FirebaseReviewRepository implements ReviewRepository {
     } catch (e) {
       debugPrint('deleteReview: old-style photo cleanup failed: $e');
     }
+    return ReviewDeleteOutcome.deleted;
   }
 
   @override

@@ -70,6 +70,38 @@ enum ReviewWriteState {
   committed,
 }
 
+/// How a review deletion ended.
+///
+/// Two-valued because only the doc-delete phase can end ambiguously. Everything
+/// that means "nothing was issued" — including a timeout on the path READ that
+/// precedes the delete — still throws, so callers cannot mistake it for a
+/// deletion in progress. That distinction is the whole reason this is a return
+/// value rather than the caller inspecting [TimeoutException]: both phases throw
+/// the same type, and treating a read timeout as queued would tell the user a
+/// review was deleted while it sat there untouched.
+enum ReviewDeleteOutcome {
+  /// The doc delete was ACKED by the server. Storage cleanup ran best-effort;
+  /// a failure there leaves an orphan blob and is deliberately not surfaced.
+  deleted,
+
+  /// The doc delete was handed to Firestore but not acked in time. It is PENDING:
+  /// latency compensation has already removed the review from the local cache, so
+  /// from the user's point of view it is gone, and reporting a failure while they
+  /// watch it disappear reads as a broken app. Storage cleanup was skipped on
+  /// purpose.
+  ///
+  /// Pending is not the same as certain. A queued mutation can still be rejected
+  /// (auth expiring during a long offline stretch, a rules change), in which case
+  /// Firestore rolls the local delete back and the review REAPPEARS after the UI
+  /// has already said it was deleted. Nothing currently observes that, because
+  /// nothing observes the ack — the same gap that leaves the write flow's queued
+  /// states unresolved and the review cooldown stale after a rejection. Tracked
+  /// for v1.1; treating it as success is the accepted interim trade, since the
+  /// alternative reports a failure that in the overwhelming majority of cases did
+  /// not happen.
+  queued,
+}
+
 /// Abstract review-storage contract.
 ///
 /// The presentation layer talks to this interface only — never to Firestore
@@ -145,7 +177,13 @@ abstract class ReviewRepository {
 
   Stream<List<ReviewEntity>> watchReviewsForPlace(String placeId);
 
-  Future<void> deleteReview(String reviewId);
+  /// Delete [reviewId] and its photos, doc-first.
+  ///
+  /// Returns [ReviewDeleteOutcome.deleted] on a server-acked delete and
+  /// [ReviewDeleteOutcome.queued] when the delete was handed off but not acked
+  /// in time. THROWS for everything that left the review untouched — including a
+  /// timeout on the path read, which must not read as queued.
+  Future<ReviewDeleteOutcome> deleteReview(String reviewId);
 
   /// Report [reviewId] by [reporterUserId] with [reason]. Runs in a single
   /// Firestore transaction keyed on `reports/{reviewId}_{reporterUserId}`,

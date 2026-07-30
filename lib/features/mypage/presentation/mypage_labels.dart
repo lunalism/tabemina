@@ -37,6 +37,7 @@ class MyPageLabels {
     required this.delete,
     required this.reviewDeleted,
     required this.reviewDeleteFailed,
+    required this.reviewDeleteQueued,
     required this.draftInProgress,
     required this.underReview,
     required this.blockedUsers,
@@ -79,6 +80,12 @@ class MyPageLabels {
   final String delete;
   final String reviewDeleted;
   final String reviewDeleteFailed;
+
+  /// The doc delete was handed to Firestore but no server ack arrived in
+  /// time. NOT a failure: latency compensation has already removed the review
+  /// locally, and the queued delete lands on reconnect. Phrased to match
+  /// `submitQueued` / `updateQueued` on the write flow.
+  final String reviewDeleteQueued;
 
   // Draft hint on the reviews empty state.
   final String draftInProgress;
@@ -143,6 +150,8 @@ class MyPageLabels {
     delete: 'Delete',
     reviewDeleted: 'Review deleted',
     reviewDeleteFailed: 'Failed to delete. Please try again.',
+    reviewDeleteQueued:
+        "Deleted — the change will sync once you're back online",
     draftInProgress: 'You have a draft in progress',
     underReview: 'Under review',
     blockedUsers: 'Blocked users',
@@ -182,6 +191,7 @@ class MyPageLabels {
     delete: '削除',
     reviewDeleted: 'レビューを削除しました',
     reviewDeleteFailed: '削除に失敗しました。もう一度お試しください。',
+    reviewDeleteQueued: '削除しました。オンラインに戻ると反映されます',
     draftInProgress: '下書きがあります',
     underReview: '審査中',
     blockedUsers: 'ブロックしたユーザー',
@@ -221,6 +231,7 @@ class MyPageLabels {
     delete: '삭제',
     reviewDeleted: '리뷰가 삭제되었습니다',
     reviewDeleteFailed: '삭제에 실패했습니다. 다시 시도해주세요.',
+    reviewDeleteQueued: '삭제됐어요. 연결되면 반영돼요',
     draftInProgress: '작성 중인 임시저장이 있습니다',
     underReview: '검토 중',
     blockedUsers: '차단한 사용자',
