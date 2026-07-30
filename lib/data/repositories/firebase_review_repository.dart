@@ -151,19 +151,54 @@ class FirebaseReviewRepository implements ReviewRepository {
     List<String> removedPhotoUrls,
     List<String> removedStoragePaths,
   ) async {
-    // Delete removed photos from Storage (best-effort — a failed delete
-    // leaves an orphan blob but doesn't block the edit). New photos are
-    // already uploaded by the pre-upload flow, so [photoUrls] is final.
+    // THE DOC WRITE GOES FIRST. New photos are already uploaded by the
+    // pre-upload flow, so [photoUrls] is final and independent of the removals
+    // below.
     //
-    // Prefer deleting by Storage path (exact ref, no URL parsing). Fall back
-    // to refFromURL for photos that predate path tracking, where the path
-    // isn't known. Both are guarded — a removed photo carried in both lists
-    // simply 404s on the second attempt, which we ignore.
+    // Never delete a blob before the write that drops its reference is
+    // confirmed. Deleting first meant a rejected update (rules, auth expired
+    // after a long offline stretch, oversize field) left a PUBLISHED review
+    // pointing at objects that no longer exist — the same corruption shape
+    // a79b6e3 fixed on the create path, except here it lands on a review other
+    // users can already see. This ordering downgrades the worst case from
+    // "published review with dead images" to "the user's text edits were lost
+    // and must be retyped".
+    //
+    // Bounded — see [_submitTimeout]. PROPAGATES: it is the write the user is
+    // waiting on, and the screen needs the timeout to release its spinner.
+    await _reviews.doc(review.reviewId).update({
+      'rating': review.rating,
+      'comment': review.comment,
+      'moodTags': review.moodTags,
+      'priceTags': review.priceTags,
+      'photoUrls': photoUrls,
+      'photoStoragePaths': photoStoragePaths,
+      'updatedAt': FieldValue.serverTimestamp(),
+    }).timeout(_submitTimeout);
+
+    // ACKED by the server — the doc no longer references the removed photos, so
+    // dropping the blobs is now safe. Getting here at all IS the guarantee: the
+    // await above propagates on both other outcomes, so they skip this phase
+    // without needing a branch.
+    //
+    //   TIMED OUT -> the update is queued and WILL land, dropping these URLs.
+    //                We can't delete yet (until it lands the doc still points
+    //                at them) and there is no ack callback to delete on later,
+    //                so the blobs become permanent orphans. Correct trade: an
+    //                orphan is invisible and sweepable (tracked v1.1
+    //                reconciliation), a dead reference in a published doc is
+    //                neither.
+    //   THREW     -> definitive failure, nothing queued. Review and photos both
+    //                stay intact and mutually consistent; the user can retry.
+    //
+    // Prefer deleting by Storage path (exact ref, no URL parsing). Fall back to
+    // refFromURL for photos that predate path tracking, where the path isn't
+    // known. Both are guarded — a removed photo carried in both lists simply
+    // 404s on the second attempt, which we ignore.
     //
     // Issued CONCURRENTLY under ONE [_submitTimeout] budget rather than awaited
-    // in sequence: this runs behind the edit screen's Post spinner, and a
-    // stalled network on a 5-photo edit would otherwise stack up to 5 separate
-    // timeouts before the doc write even started.
+    // in sequence: this still runs behind the edit screen's Post spinner, and a
+    // stalled Storage on a 5-photo edit would otherwise stack 5 timeouts.
     final removals = <Future<void>>[
       for (final path in removedStoragePaths)
         _deleteQuietly(() => _storage.ref(path).delete()),
@@ -174,26 +209,15 @@ class FirebaseReviewRepository implements ReviewRepository {
       try {
         await Future.wait(removals).timeout(_submitTimeout);
       } on TimeoutException {
-        // Storage is unreachable. The edit itself must still save — an orphan
-        // blob is invisible and sweepable, a blocked edit is neither. The
-        // queued deletes still land on reconnect.
+        // Storage unreachable while Firestore just succeeded — an unusual split,
+        // since they share the network. The edit is already committed, so return
+        // normally; the queued deletes land on reconnect and anything that never
+        // does is sweep material. Blocking on cleanup the user has no stake in
+        // would only cost them a spinner.
         debugPrint('updateReview: Storage removals still pending after '
-            '$_submitTimeout; saving the edit anyway.');
+            '$_submitTimeout; the edit is already committed.');
       }
     }
-
-    // Bounded — see [_submitTimeout]. Unlike the removals above this one
-    // PROPAGATES: it is the write the user is waiting on, and the screen needs
-    // the timeout to release its spinner.
-    await _reviews.doc(review.reviewId).update({
-      'rating': review.rating,
-      'comment': review.comment,
-      'moodTags': review.moodTags,
-      'priceTags': review.priceTags,
-      'photoUrls': photoUrls,
-      'photoStoragePaths': photoStoragePaths,
-      'updatedAt': FieldValue.serverTimestamp(),
-    }).timeout(_submitTimeout);
 
     return ReviewEntity(
       reviewId: review.reviewId,
