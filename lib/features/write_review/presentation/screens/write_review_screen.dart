@@ -903,22 +903,30 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
   /// server-side cooldown enforcement (tracked for v1.1), so this client gate
   /// is the only one there is.
   ///
-  /// What each consumer ACTUALLY does with a queued review — the earlier claim
-  /// that they all "optimistically show" it was only two-thirds right:
-  ///  - My Page grid: shows it FIRST. Its client-side re-sort runs on
+  /// What each consumer ACTUALLY does with a queued review. DEVICE-VERIFIED
+  /// (re-verification A'), not inferred — the earlier claim that they all
+  /// "optimistically show" it was only two-thirds right:
+  ///  - My Page grid: shows it FIRST, correctly. Its client-side re-sort runs on
   ///    `ReviewEntity.createdAt`, which `_timestampOrNow` has already filled with
   ///    "now".
-  ///  - Home feed: usually does NOT show it. The query's `orderBy('createdAt',
-  ///    descending: true)` sees the raw null, which sorts lowest, so the queued
-  ///    review lands LAST and the `take(limit)` truncates it away whenever the
-  ///    user has more than a handful of visible reviews.
-  ///  - Detail list: shows it at the BOTTOM, same ordering, no limit to truncate.
+  ///  - Home feed: NOT visible. The query's `orderBy('createdAt', descending:
+  ///    true)` sees the raw null, which sorts lowest, so the queued review lands
+  ///    LAST and `take(limit)` truncates it away.
+  ///  - Detail list: visible at the BOTTOM, same ordering but no limit to
+  ///    truncate. Its photos render BLANK until reconnect — the URLs are on the
+  ///    doc, but the images can't be fetched while the network is down.
+  ///
+  /// The observation also settles the open question behind all three: a
+  /// present-but-null `createdAt` IS included in an `orderBy` query and sorts
+  /// lowest. The alternative reading — that a null-valued field is treated like an
+  /// absent one and excluded from the query entirely — is ruled out.
   ///
   /// Left as-is deliberately. The queued copy promises the review will post once
   /// back online, so not displaying it yet is coherent rather than broken, and it
   /// self-corrects the moment the server stamps createdAt. Reordering client-side
   /// would mean overriding the query in three places to surface a review that may
-  /// still be rejected.
+  /// still be rejected — and on the detail list it would promote a row whose
+  /// photos are blank.
   ///
   /// Accepted side effect where it IS shown: a review that could later be
   /// rejected and vanish. Ordinary latency-compensated behaviour, and a far
