@@ -59,8 +59,16 @@ class PhotoUploadState {
   /// Firebase Storage download URL — set when [status] is completed.
   final String? downloadUrl;
 
-  /// Firebase Storage path, for deletion. Null for [isExisting] photos
-  /// (we don't track their original storage path).
+  /// Firebase Storage path, for deletion. Where this photo's blob BELONGS —
+  /// not proof that one is there. Set the moment the entry is created, since
+  /// the path is derived from `(userId, localId)` alone, so it is already
+  /// populated while the photo is still processing or uploading. A delete
+  /// issued against it may therefore legitimately hit `object-not-found`; that
+  /// is the expected outcome for a photo removed before its upload landed, not
+  /// an error. Use [status] when you need to know a blob actually exists.
+  ///
+  /// Null only for [isExisting] photos from a review saved before path
+  /// tracking (we don't know their original storage path).
   final String? storagePath;
 
   final PhotoUploadStatus status;

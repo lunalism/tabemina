@@ -551,6 +551,20 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
   }
 
   void _removePhoto(String localId) {
+    // FORBIDDEN once the write is handed off — same invariant as
+    // [_cleanupUploads], for the same reason: `completedStoragePaths` has
+    // already been read into the document being written, so those blobs are
+    // load-bearing for a review that may commit at any moment (including later,
+    // from the offline queue). Deleting one publishes a review whose photoUrls
+    // 404.
+    //
+    // Until now this was covered only INCIDENTALLY, by the body's AbsorbPointer
+    // swallowing the X button while `_posting`. That was enough while a
+    // photo's storagePath stayed null until its upload finished; now that the
+    // path is recorded at mint, removePhoto will attempt a Storage delete for
+    // strictly more entries, so the dependency is made explicit rather than
+    // left resting on a layout detail.
+    if (_submitInitiated) return;
     _uploadManager.removePhoto(localId);
   }
 

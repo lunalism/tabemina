@@ -129,10 +129,20 @@ class PhotoUploadManager {
   /// each lifecycle transition.
   Future<void> addPhoto(File file, String userId) async {
     final localId = DateTime.now().microsecondsSinceEpoch.toString();
+    // The path is a pure derivation of (userId, localId) — both known right
+    // here — so the entry carries it from birth rather than acquiring it on
+    // upload success. Deriving it late was the whole 8f orphan: `removePhoto`
+    // and `cancelAll` decide whether to delete by reading `storagePath`, and
+    // for the entire processing + upload round-trip that field was still null,
+    // so a removal mid-flight skipped the delete and left the blob behind.
+    // Setting it now makes both guards correct by construction instead of by
+    // timing. See [PhotoUploadState.storagePath] for the weakened contract.
+    final storagePath = _storagePathFor(userId, localId);
     _photos.add(PhotoUploadState(
       localId: localId,
       originalFile: file,
       status: PhotoUploadStatus.processing,
+      storagePath: storagePath,
     ));
     _notify();
 
@@ -146,7 +156,8 @@ class PhotoUploadManager {
             status: PhotoUploadStatus.uploading,
           ));
 
-      final storagePath = _storagePathFor(userId, localId);
+      // Reuses the path derived at mint — exactly one derivation per photo, so
+      // the ref written to can never drift from the one the delete guards read.
       final ref = _storage.ref(storagePath);
       final task = ref.putFile(
         processed,
@@ -164,10 +175,11 @@ class PhotoUploadManager {
       await task;
       final url = await ref.getDownloadURL();
 
+      // No `storagePath:` here — it was set at mint, and re-setting it would
+      // imply completion is when the path becomes known. It never was.
       _update(localId, (s) => s.copyWith(
             status: PhotoUploadStatus.completed,
             downloadUrl: url,
-            storagePath: storagePath,
             uploadProgress: 1.0,
           ));
 
@@ -235,6 +247,32 @@ class PhotoUploadManager {
     if (index < 0) return;
     final photo = _photos[index];
     if (photo.status != PhotoUploadStatus.failed) return;
+
+    // A retry mints a NEW localId and therefore a NEW path, so the old one
+    // becomes unreachable the instant this entry is discarded. That matters
+    // because `putFile` and `getDownloadURL` share one catch: a failure at the
+    // getDownloadURL stage means the upload ALREADY succeeded and a blob is
+    // sitting at the old path. Drop it here or nothing ever will.
+    //
+    // Safe unconditionally: a failed photo is by definition absent from every
+    // Firestore document — the review has not been written, and
+    // `completedStoragePaths` only ever collects completed entries — so no doc
+    // can reference this blob. Existing (edit-mode) photos never reach here;
+    // they load as completed and the status guard above returns first.
+    final oldPath = photo.storagePath;
+    if (oldPath != null && !photo.isExisting) {
+      // Fire-and-forget: retry is user-interactive, so the re-upload below must
+      // not wait on cleanup of a blob the user has already stopped caring about.
+      unawaited(() async {
+        try {
+          await _storage.ref(oldPath).delete();
+        } catch (e) {
+          debugPrint(
+              'retryPhoto: failed to delete Storage photo at $oldPath: $e');
+        }
+      }());
+    }
+
     _photos.removeAt(index);
     _notify();
     await addPhoto(photo.originalFile, userId);
