@@ -156,6 +156,27 @@ class PhotoUploadManager {
             status: PhotoUploadStatus.uploading,
           ));
 
+      // A1 — BANDWIDTH ONLY, not an orphan fix. Closes exactly one case: the
+      // user picks a photo and removes it again before compression finishes,
+      // which saves starting an upload nobody wants. It does NOTHING for the
+      // abandon-during-upload case, whose window opens only after `putFile`
+      // below has already been called: compression is a local native codec
+      // measured in hundreds of milliseconds, while abandoning a slow upload
+      // unfolds over seconds, so this check has long since passed by the time
+      // the user reaches for back. The orphan class is closed by A3 after
+      // `await task`, not here.
+      //
+      // No Storage delete on this path — `putFile` never ran, so there is no
+      // blob and an object-not-found round-trip would be pure cost.
+      if (!_isAlive(localId)) {
+        // MANDATORY: nothing downstream will ever see this file again, so
+        // skipping it would leak the compressed temp file to local disk.
+        if (processed.path != file.path) {
+          processed.delete().catchError((_) => processed);
+        }
+        return;
+      }
+
       // Reuses the path derived at mint — exactly one derivation per photo, so
       // the ref written to can never drift from the one the delete guards read.
       final ref = _storage.ref(storagePath);
@@ -173,6 +194,48 @@ class PhotoUploadManager {
         );
       });
       await task;
+
+      // A3 — the actual fix for the upload orphan class. Every other layer acts
+      // on a prediction about ordering; this one acts after an accomplished
+      // fact: `putFile` has resolved, so the blob EXISTS. If the entry is gone,
+      // nothing will ever reference it — `completedStoragePaths` only collects
+      // live entries, so it never reaches a review document, and both delete
+      // guards (removePhoto, cancelAll) already ran and found either nothing or
+      // a half-written object. Delete it here or it is orphaned forever.
+      //
+      // Placed BEFORE getDownloadURL deliberately. That also closes the case
+      // where the upload succeeded but getDownloadURL would fail (both share
+      // the catch below, which deletes nothing), and skips a pointless network
+      // round-trip for a photo nobody wants.
+      //
+      // Runs correctly AFTER dispose(): `_disposed` is not consulted, `_photos`
+      // survives disposal, and this path touches neither `_notify` nor
+      // `_update` nor `photosNotifier` — all three are unsafe once the notifier
+      // is disposed at :378, and `_update` would in any case bail at its own
+      // `_disposed` guard before ever evaluating liveness.
+      //
+      // LOAD-BEARING INVARIANT, currently implicit elsewhere: an entry leaves
+      // `_photos` ONLY via user removal, cancelAll (abandon), or retryPhoto —
+      // NEVER via a successful submit, which reads the list without mutating
+      // it. `_cleanupUploads`'s `if (_submitInitiated) return;` guard
+      // (write_review_screen.dart:422) is what keeps cancelAll from running
+      // once a write is handed to Firestore. So "entry absent" can never mean
+      // "this URL already reached a review document." If that guard is ever
+      // removed, this delete stops being cleanup and starts destroying the
+      // photos of a review that is about to publish.
+      if (!_isAlive(localId)) {
+        try {
+          await _storage.ref(storagePath).delete();
+        } catch (e) {
+          debugPrint(
+              'addPhoto: failed to delete abandoned Storage photo at $storagePath: $e');
+        }
+        if (processed.path != file.path) {
+          processed.delete().catchError((_) => processed);
+        }
+        return;
+      }
+
       final url = await ref.getDownloadURL();
 
       // No `storagePath:` here — it was set at mint, and re-setting it would
@@ -320,13 +383,35 @@ class PhotoUploadManager {
   /// that already committed (or that commits later from the offline queue)
   /// publishes a review whose photoUrls 404.
   Future<void> cancelAll() async {
+    // Snapshot the doomed entries, then clear the list BEFORE issuing a single
+    // delete. The ordering is load-bearing, not cosmetic.
+    //
+    // The post-upload check in [addPhoto] treats "absent from `_photos`" as
+    // "abandoned — delete the blob". That contract requires there to be NO
+    // interval in which an entry is still present but already doomed. Clearing
+    // after the awaits created exactly such an interval, up to [_cancelTimeout]
+    // wide: an upload resolving inside it found itself still "alive", skipped
+    // its own cleanup, and then had its `_update` no-op against the list this
+    // method had since cleared — leaving the blob with nothing referencing it.
+    // That is the orphan the check exists to prevent.
+    //
+    // Any future edit that moves the clear back below the awaits silently
+    // reopens it.
+    final doomed = _photos.where((p) => !p.isExisting).toList();
+
+    // Repaints the strip empty before the network work rather than after. Safe:
+    // the only caller (`_WriteReviewScreenState._cleanupUploads`) has already
+    // set `_closing`, which puts the form behind an AbsorbPointer and holds
+    // `PopScope.canPop` false, and it pops the screen the moment this returns.
+    _photos.clear();
+    _notify();
+
     // Collect each Storage delete so we can await them together — they should
     // resolve BEFORE this returns, since the caller pops the screen right
     // after. Bounded by [_cancelTimeout] so a stalled network can't hold the
     // pop hostage.
     final storageDeletes = <Future<void>>[];
-    for (final photo in _photos) {
-      if (photo.isExisting) continue;
+    for (final photo in doomed) {
       if (photo.storagePath != null) {
         storageDeletes.add(() async {
           try {
@@ -352,9 +437,18 @@ class PhotoUploadManager {
       debugPrint('cancelAll: Storage deletes still pending after '
           '$_cancelTimeout; releasing the caller.');
     }
-    _photos.clear();
-    _notify();
   }
+
+  /// Whether [localId] is still in the list — i.e. the user has not removed it
+  /// and no abandon-cleanup has cleared it.
+  ///
+  /// Deliberately does NOT consult `_disposed`, unlike [_update]. That is the
+  /// entire point: after `dispose()` the entry is gone and its blob still needs
+  /// deleting, so an in-flight upload's completion must be able to ask this
+  /// question and get a truthful answer on a dead manager. `_photos` outlives
+  /// disposal (see [dispose]); only the notifier does not.
+  bool _isAlive(String localId) =>
+      _photos.indexWhere((p) => p.localId == localId) >= 0;
 
   void _update(
     String localId,
