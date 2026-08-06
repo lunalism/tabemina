@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/moderation/content_filter.dart';
@@ -271,12 +272,24 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
 
   /// Persist the current form as a draft now. No-op in edit mode, while leaving
   /// (so cleanup can't overwrite the kept draft), or when the form is empty.
-  void _saveDraftNow() {
+  ///
+  /// The returned Future completes only once the write has actually landed.
+  /// Almost every caller ignores it — draft saving is deliberately
+  /// fire-and-forget while the user types and taps — but [_openAppSettings]
+  /// awaits it, because the app is about to be handed to iOS Settings and may
+  /// be terminated there without ever regaining control.
+  Future<void> _saveDraftNow() async {
     if (_isEdit || _leaving || !_hasContent) return;
-    ref.read(draftStorageServiceProvider).saveDraft(_buildDraft());
+    // Indicator and invalidation stay BEFORE the await, exactly where they ran
+    // when this was synchronous: the unawaited callers must keep seeing the
+    // "saved" state flip immediately, and running them after an await would
+    // also mean touching `ref` on a State that could have been disposed
+    // mid-write.
+    final saved = ref.read(draftStorageServiceProvider).saveDraft(_buildDraft());
     ref.invalidate(hasDraftProvider);
     // Surface the quiet "saved" indicator (scoped — no parent rebuild).
     _draftSavedNotifier.value = true;
+    await saved;
   }
 
   void _onCommentChangedForDraft() {
@@ -544,10 +557,61 @@ class _WriteReviewScreenState extends ConsumerState<WriteReviewScreen> {
           _uploadManager.addPhoto(File(x.path), userId);
         }
       }
-    } on PlatformException {
-      // Permission denied / OS cancel — nothing useful to surface, the OS
-      // already showed its own dialog. Stay on the form.
+    } on PlatformException catch (e) {
+      // NOT "the OS already showed its own dialog" — it didn't. iOS shows the
+      // camera prompt exactly once per install, on the NotDetermined path.
+      // Once denied, every later attempt throws here immediately with no OS UI
+      // at all, so silence leaves the user tapping "Take photo" against a
+      // camera that will never open — and a review needs >= 1 photo, so a user
+      // who doesn't independently find the gallery option simply can't post.
+      switch (e.code) {
+        case 'camera_access_denied':
+          if (!mounted) return;
+          showTabeminaBlockedSnackbar(
+            context,
+            message: l.cameraAccessDenied,
+            retryLabel: l.openSettings,
+            onRetry: _openAppSettings,
+            icon: Icons.error_outline_rounded,
+          );
+        case 'camera_access_restricted':
+          // Screen Time / MDM. Deliberately no Settings action: the app's own
+          // Settings pane can't lift a restriction, so that button would be a
+          // dead end. The copy points at the gallery instead.
+          if (!mounted) return;
+          showTabeminaBlockedSnackbar(
+            context,
+            message: l.cameraAccessRestricted,
+            icon: Icons.error_outline_rounded,
+          );
+        default:
+          // multiple_request (a benign double-tap), invalid_source, unknown.
+          // Stay silent — a snackbar on a double-tap is pure noise — but leave
+          // a trace so QA can tell "nothing happened" from "nothing threw".
+          debugPrint('_pickPhotos: unhandled PlatformException ${e.code}');
+      }
     }
+  }
+
+  /// Deep-link into Tabemina's own iOS Settings pane so the user can flip the
+  /// camera switch back on.
+  ///
+  /// Saves the draft FIRST: iOS terminates the app the moment a permission
+  /// toggle changes, and the comment field's draft save is debounced 2s
+  /// (`_onCommentChangedForDraft`) — without this, whatever was typed in the
+  /// last two seconds dies with the process. The other fields already save
+  /// eagerly; the comment is the hole.
+  ///
+  /// If the scheme can't be launched there's nothing further to do — the
+  /// snackbar has already delivered the message.
+  Future<void> _openAppSettings() async {
+    // The one call site that awaits: iOS terminates the app when a camera
+    // permission is toggled, so the write has to have landed before we hand
+    // off — everywhere else the app stays alive and fire-and-forget is fine.
+    await _saveDraftNow();
+    final uri = Uri.parse('app-settings:');
+    if (!await canLaunchUrl(uri)) return;
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 
   void _removePhoto(String localId) {
@@ -1375,6 +1439,9 @@ class _Labels {
     required this.retry,
     required this.submitQueued,
     required this.updateQueued,
+    required this.cameraAccessDenied,
+    required this.cameraAccessRestricted,
+    required this.openSettings,
   });
 
   final String screenTitle;
@@ -1453,6 +1520,16 @@ class _Labels {
   // the write can still be rejected, which is why the draft is kept.
   final String submitQueued;
   final String updateQueued;
+
+  // C-4 3-4 camera-permission copy.
+  //
+  // Both strings name the alternative (gallery) so the user always has a path
+  // that works right now, without leaving the app. Only the denied string gets
+  // a Settings action: a Screen Time or MDM restriction cannot be lifted from
+  // the app's own Settings pane, so a button there would be a dead end.
+  final String cameraAccessDenied;
+  final String cameraAccessRestricted;
+  final String openSettings;
 
   static _Labels of(String code) {
     switch (code) {
@@ -1537,6 +1614,13 @@ class _Labels {
     retry: 'Retry',
     submitQueued: "Saved — your review will post once you're back online",
     updateQueued: "Saved — your changes will apply once you're back online",
+    cameraAccessDenied:
+        'Camera access is off. Turn it on in Settings, or choose from your '
+        'gallery.',
+    cameraAccessRestricted:
+        'Camera use is restricted on this device. Choose from your gallery '
+        'instead.',
+    openSettings: 'Settings',
   );
 
   static final _ja = _Labels._(
@@ -1605,6 +1689,9 @@ class _Labels {
     retry: '再試行',
     submitQueued: '保存しました。オンラインに戻ると投稿されます',
     updateQueued: '保存しました。オンラインに戻ると反映されます',
+    cameraAccessDenied: 'カメラへのアクセスがオフです。設定でオンにするか、ギャラリーから選んでください。',
+    cameraAccessRestricted: 'この端末ではカメラの使用が制限されています。ギャラリーから選んでください。',
+    openSettings: '設定',
   );
 
   static final _ko = _Labels._(
@@ -1673,5 +1760,8 @@ class _Labels {
     retry: '재시도',
     submitQueued: '저장됐어요. 연결되면 게시돼요',
     updateQueued: '저장됐어요. 연결되면 반영돼요',
+    cameraAccessDenied: '카메라 접근이 꺼져 있어요. 설정에서 켜거나 갤러리에서 선택해 주세요.',
+    cameraAccessRestricted: '이 기기에서는 카메라 사용이 제한되어 있어요. 갤러리에서 선택해 주세요.',
+    openSettings: '설정',
   );
 }
