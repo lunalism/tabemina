@@ -8,6 +8,17 @@ import '../../../../core/analytics/analytics_events.dart';
 import '../../../../core/utils/image_utils.dart';
 import '../../domain/models/photo_upload_state.dart';
 
+/// Wall-clock ceiling for a single photo upload.
+///
+/// Rationale (argued, not measured): review photos are ~1200px / q82 JPEG, i.e.
+/// a few hundred KB. At ~100 kbps a 300 KB object takes roughly 24s, so 60s
+/// leaves headroom for a bad-but-alive link while still bounding a stuck
+/// transfer. This is deliberately NOT in the same family as the existing 10s
+/// constants in this codebase (`_cancelTimeout` here,
+/// `FirebaseReviewRepository._submitTimeout` / `._deleteTimeout`) — those bound
+/// small request/ack round-trips, this bounds a bulk transfer.
+const Duration _kUploadDeadline = Duration(seconds: 60);
+
 /// Drives the Instagram-style pre-upload flow: photos are processed and
 /// uploaded to Firebase Storage the moment they're picked, so by the time
 /// the user taps Post the URLs are already available and the submit is just
@@ -146,6 +157,12 @@ class PhotoUploadManager {
     ));
     _notify();
 
+    // Declared outside the try so the finally can tear both down on every exit
+    // path — including the two early returns (A1, A3) below, which until now
+    // leaked the progress subscription for the lifetime of the isolate.
+    Timer? deadlineTimer;
+    StreamSubscription<TaskSnapshot>? progressSub;
+
     try {
       final processed = await processImageForUpload(
         file,
@@ -184,16 +201,78 @@ class PhotoUploadManager {
         processed,
         SettableMetadata(contentType: 'image/jpeg'),
       );
-      task.snapshotEvents.listen((snap) {
-        if (snap.totalBytes <= 0) return;
-        _update(
-          localId,
-          (s) => s.copyWith(
-            uploadProgress: snap.bytesTransferred / snap.totalBytes,
-          ),
-        );
-      });
+      // Bound a stuck transfer by cancelling the task itself, NOT by racing
+      // `await task` with a .timeout(). A .timeout() would leave the upload
+      // running upstream and sever the A3 continuation below, so an abandon
+      // after expiry would delete a blob that the still-running transfer then
+      // publishes — exactly the orphan class A3 exists to close.
+      //
+      // VERIFIED ON iOS ONLY (firebase_storage 13.4.2 / platform_interface
+      // 6.0.2 / firebase-ios-sdk 12.14.0, the latter read out-of-tree — it
+      // links via SPM, not Pods). task.cancel() rejects `await task` promptly
+      // with FirebaseException(plugin: 'firebase_storage', code: 'canceled'),
+      // and a cancelled upload never publishes an object (single chunk, plus an
+      // explicit X-Goog-Upload-Command: cancel), so no orphan cleanup is needed
+      // on this path — the catch below only marks the tile failed.
+      //
+      // RESIDUAL RISK (iOS): if a cancelled upload ever leaves a tile stuck in
+      // `uploading` past the deadline instead of flipping to `failed`, the
+      // assumption that iOS never emits TaskState.canceled has broken. Revert
+      // this deadline; do not patch around it.
+      //
+      // Gated to iOS because iOS is the only platform where cancel-on-deadline
+      // was verified to terminate. On Android, method_channel_task.dart:77-85
+      // handles TaskState.canceled by setting _didComplete and breaking WITHOUT
+      // completing _completer, so `await task` would never resolve: the tile
+      // would stay `uploading` forever and the user could not retry. That branch
+      // is unreachable today only because nothing else in the app calls
+      // cancel(). Leaving Android ungated would make it reachable, so Android
+      // keeps its pre-existing unbounded-upload behaviour until the hang is
+      // verified or fixed upstream.
+      //
+      // Racing `await task` against a synthetic failure instead (so the deadline
+      // would work on both platforms) is NOT an option: it severs the A3
+      // continuation, which is precisely the orphan class closed in commit 3-3.
+      if (Platform.isIOS) {
+        deadlineTimer = Timer(_kUploadDeadline, () {
+          // Never bare `task.cancel()`. It returns a Future<bool> that can
+          // reject (e.g. the benign race where the task has already finished),
+          // and an unawaited rejection out of a timer callback is precisely the
+          // unhandled zone error this commit exists to remove.
+          unawaited(task.cancel().catchError((_) => false));
+        });
+      }
+
+      progressSub = task.snapshotEvents.listen(
+        (snap) {
+          if (snap.totalBytes <= 0) return;
+          _update(
+            localId,
+            (s) => s.copyWith(
+              uploadProgress: snap.bytesTransferred / snap.totalBytes,
+            ),
+          );
+        },
+        // `await task` is the single source of truth for this upload's outcome;
+        // the completer path in method_channel_task.dart delivers the identical
+        // exception to the catch below. This handler exists only so the
+        // duplicate stream-side error does not escape to the zone. Writing state
+        // from here would double-classify the same failure.
+        onError: (Object error, StackTrace stack) {
+          debugPrint(
+              'addPhoto: upload progress stream error for $storagePath: $error');
+        },
+      );
+
       await task;
+      // Success path: the deadline is done governing, so retire it here rather
+      // than leaving it armed across getDownloadURL. Timer.cancel() is
+      // idempotent, so the finally's second call is free — and the finally must
+      // keep it, because the throw path never reaches this line.
+      //
+      // Null-aware because the arming above is gated: off iOS the timer was
+      // never created, so there is nothing to retire.
+      deadlineTimer?.cancel();
 
       // A3 — the actual fix for the upload orphan class. Every other layer acts
       // on a prediction about ordering; this one acts after an accomplished
@@ -236,7 +315,12 @@ class PhotoUploadManager {
         return;
       }
 
-      final url = await ref.getDownloadURL();
+      // A small request/ack round-trip, so it belongs to the 10s family, not to
+      // [_kUploadDeadline]. Timing out here is safe for the orphan invariant:
+      // the blob exists but the entry stays in `_photos` as `failed` carrying
+      // the storagePath minted at :140, so retryPhoto and cancelAll both still
+      // find and delete it.
+      final url = await ref.getDownloadURL().timeout(const Duration(seconds: 10));
 
       // No `storagePath:` here — it was set at mint, and re-setting it would
       // imply completion is when the path becomes known. It never was.
@@ -262,6 +346,15 @@ class PhotoUploadManager {
                 ? PhotoFailureKind.unprocessable
                 : PhotoFailureKind.transient,
           ));
+    } finally {
+      deadlineTimer?.cancel();
+      try {
+        await progressSub?.cancel();
+      } catch (_) {
+        // A failure to tear down the progress subscription must never replace
+        // the real return value or the real exception travelling out of this
+        // method.
+      }
     }
   }
 
